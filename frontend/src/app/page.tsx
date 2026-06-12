@@ -27,7 +27,8 @@ type Usuario = {
 type Incidente = {
   id: number;
   title: string;
-  prioridad: string;
+  prioridad?: string | null;
+  status?: string | null;
   app_source?: string | null;
 };
 
@@ -90,6 +91,43 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [usuario, setUsuario] = useState<{nombre: string; rol: string} | null>(null);
   const [incidentes, setIncidentes] = useState<Incidente[]>([]);
+  const [filtroPrioridad, setFiltroPrioridad] = useState<string>('TODAS');
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [formTitulo, setFormTitulo] = useState('');
+  const [formDesc, setFormDesc] = useState('');
+  const [formPrioridad, setFormPrioridad] = useState('MEDIA');
+  const [enviando, setEnviando] = useState(false);
+
+  const recargarIncidentes = async () => {
+    const res = await fetch(`${apiBaseUrl}/incidentes`, { credentials: 'include', cache: 'no-store' });
+    if (res.ok) setIncidentes(await res.json());
+  };
+
+  const handleEnviar = async () => {
+    if (!formTitulo.trim()) return;
+    setEnviando(true);
+    try {
+      await fetch(`${apiBaseUrl}/incidentes`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titulo: formTitulo,
+          descripcion: formDesc,
+          app_source: 'ihui-core',
+          tipo: 'BUG',
+          prioridad: formPrioridad,
+        }),
+      });
+      setModalAbierto(false);
+      setFormTitulo('');
+      setFormDesc('');
+      setFormPrioridad('MEDIA');
+      await recargarIncidentes();
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -148,16 +186,40 @@ export default function Home() {
 
         {/* Header */}
         <div style={{ marginBottom: '2.5rem' }}>
-          <h1 style={{
-            fontSize: '1.5rem',
-            fontWeight: 600,
-            color: '#F9FAFB',
-            fontFamily: "'DM Serif Display', Georgia, serif",
-            fontStyle: 'italic',
-            margin: 0,
-          }}>
-            ihui CORE
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <h1 style={{
+              fontSize: '1.5rem',
+              fontWeight: 600,
+              color: '#F9FAFB',
+              fontFamily: "'DM Serif Display', Georgia, serif",
+              fontStyle: 'italic',
+              margin: 0,
+            }}>
+              ihui CORE
+            </h1>
+            <button
+              onClick={async () => {
+                await fetch(`${apiBaseUrl}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
+                sessionStorage.clear();
+                window.location.href = '/login';
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.borderColor = '#EF4444'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#6B7280'; e.currentTarget.style.borderColor = '#2A2A2A'; }}
+              style={{
+                background: 'none',
+                border: '1px solid #2A2A2A',
+                borderRadius: '8px',
+                color: '#6B7280',
+                fontSize: '13px',
+                cursor: 'pointer',
+                fontFamily: "'DM Sans', sans-serif",
+                padding: '0.5rem 1rem',
+                transition: 'color 0.15s, border-color 0.15s',
+              }}
+            >
+              Cerrar sesión
+            </button>
+          </div>
           <p style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>
             Gobernabilidad institucional · {mes}
           </p>
@@ -297,22 +359,50 @@ export default function Home() {
             }}>
               Incidentes
             </p>
+            {/* Filtros de prioridad */}
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+              {['TODAS', 'CRITICA', 'ALTA', 'MEDIA', 'BAJA'].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setFiltroPrioridad(p)}
+                  style={{
+                    padding: '3px 10px',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    borderRadius: '6px',
+                    border: `1px solid ${filtroPrioridad === p ? '#2A7A5A' : '#2A2A2A'}`,
+                    backgroundColor: filtroPrioridad === p ? '#2A7A5A' : '#1A1A1A',
+                    color: filtroPrioridad === p ? '#fff' : '#6B7280',
+                    cursor: 'pointer',
+                    fontFamily: "'DM Sans', sans-serif",
+                    transition: 'background 0.15s, color 0.15s',
+                  }}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+
             <div style={{
               backgroundColor: '#1A1A1A',
               border: '1px solid #2A2A2A',
               borderRadius: '12px',
               padding: '1.5rem',
             }}>
-              {incidentes.length > 0 ? (
+              {(() => {
+                const visibles = filtroPrioridad === 'TODAS'
+                  ? incidentes
+                  : incidentes.filter(i => (i.status ?? '').toUpperCase() === filtroPrioridad);
+                return visibles.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {incidentes.map((inc) => {
+                  {visibles.map((inc) => {
                     const PRIORIDAD_COLOR: Record<string, string> = {
                       CRITICA: '#EF4444',
                       ALTA:    '#C8920A',
                       MEDIA:   '#6B7280',
                       BAJA:    '#4B5563',
                     };
-                    const color = PRIORIDAD_COLOR[(inc.prioridad ?? '').toUpperCase()] ?? '#6B7280';
+                    const color = PRIORIDAD_COLOR[(inc.status ?? inc.prioridad ?? '').toUpperCase()] ?? '#6B7280';
                     return (
                       <div key={inc.id} style={{
                         borderBottom: '1px solid #2A2A2A',
@@ -327,7 +417,7 @@ export default function Home() {
                             {inc.title}
                           </p>
                           <p style={{ fontSize: '12px', margin: '4px 0 0' }}>
-                            <span style={{ color, fontWeight: 600 }}>{inc.prioridad}</span>
+                            <span style={{ color, fontWeight: 600 }}>{inc.status ?? inc.prioridad}</span>
                             {inc.app_source && (
                               <span style={{ color: '#4B5563' }}> · {inc.app_source}</span>
                             )}
@@ -339,8 +429,7 @@ export default function Home() {
                               method: 'PATCH',
                               credentials: 'include',
                             });
-                            const res = await fetch(`${apiBaseUrl}/incidentes`, { credentials: 'include', cache: 'no-store' });
-                            if (res.ok) setIncidentes(await res.json());
+                            await recargarIncidentes();
                           }}
                           style={{
                             padding: '4px 12px',
@@ -361,15 +450,201 @@ export default function Home() {
                     );
                   })}
                 </div>
-              ) : (
+                ) : (
                 <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
-                  Sin incidentes activos.
+                  {filtroPrioridad === 'TODAS' ? 'Sin incidentes activos.' : `Sin incidentes con prioridad ${filtroPrioridad}.`}
                 </p>
-              )}
+                );
+              })()}
             </div>
           </>
         )}
       </div>
+
+      {/* Botón flotante */}
+      <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 50 }}>
+        <div style={{ position: 'relative', display: 'inline-flex' }} className="group">
+          <button
+            onClick={() => setModalAbierto(true)}
+            title="Reportar incidente"
+            style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              backgroundColor: '#1A1A1A',
+              border: '1px solid #2A2A2A',
+              color: '#6B7280',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+              transition: 'border-color 0.15s, color 0.15s',
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#2A7A5A';
+              e.currentTarget.style.color = '#2A7A5A';
+              const tip = e.currentTarget.nextElementSibling as HTMLElement | null;
+              if (tip) tip.style.opacity = '1';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '#2A2A2A';
+              e.currentTarget.style.color = '#6B7280';
+              const tip = e.currentTarget.nextElementSibling as HTMLElement | null;
+              if (tip) tip.style.opacity = '0';
+            }}
+          >
+            ⚑
+          </button>
+          <span style={{
+            position: 'absolute',
+            bottom: '56px',
+            right: 0,
+            backgroundColor: '#2A2A2A',
+            color: '#F9FAFB',
+            fontSize: '11px',
+            fontWeight: 500,
+            padding: '4px 10px',
+            borderRadius: '6px',
+            whiteSpace: 'nowrap',
+            opacity: 0,
+            transition: 'opacity 0.15s',
+            pointerEvents: 'none',
+            fontFamily: "'DM Sans', sans-serif",
+          }}>
+            Reportar incidente
+          </span>
+        </div>
+      </div>
+
+      {/* Modal */}
+      {modalAbierto && (
+        <div
+          onClick={() => setModalAbierto(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 100,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: '#1A1A1A',
+              border: '1px solid #2A2A2A',
+              borderRadius: '16px',
+              padding: '2rem',
+              width: '100%',
+              maxWidth: '440px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#F9FAFB' }}>
+              Reportar incidente
+            </h2>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '11px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Título</label>
+              <input
+                value={formTitulo}
+                onChange={(e) => setFormTitulo(e.target.value)}
+                placeholder="Descripción breve del incidente"
+                style={{
+                  padding: '0.65rem 0.875rem',
+                  borderRadius: '8px',
+                  backgroundColor: '#0D0D0D',
+                  border: '1px solid #2A2A2A',
+                  color: '#F9FAFB',
+                  fontSize: '13px',
+                  outline: 'none',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '11px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Descripción</label>
+              <textarea
+                value={formDesc}
+                onChange={(e) => setFormDesc(e.target.value)}
+                placeholder="Detalles adicionales..."
+                rows={3}
+                style={{
+                  padding: '0.65rem 0.875rem',
+                  borderRadius: '8px',
+                  backgroundColor: '#0D0D0D',
+                  border: '1px solid #2A2A2A',
+                  color: '#F9FAFB',
+                  fontSize: '13px',
+                  outline: 'none',
+                  resize: 'vertical',
+                  fontFamily: "'DM Sans', sans-serif",
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '11px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Prioridad</label>
+              <select
+                value={formPrioridad}
+                onChange={(e) => setFormPrioridad(e.target.value)}
+                style={{
+                  padding: '0.65rem 0.875rem',
+                  borderRadius: '8px',
+                  backgroundColor: '#0D0D0D',
+                  border: '1px solid #2A2A2A',
+                  color: '#F9FAFB',
+                  fontSize: '13px',
+                  outline: 'none',
+                }}
+              >
+                <option value="BAJA">Baja</option>
+                <option value="MEDIA">Media</option>
+                <option value="ALTA">Alta</option>
+                <option value="CRITICA">Crítica</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <button
+                onClick={() => setModalAbierto(false)}
+                style={{
+                  padding: '0.6rem 1.25rem',
+                  backgroundColor: 'transparent',
+                  color: '#6B7280',
+                  border: '1px solid #2A2A2A',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleEnviar}
+                disabled={enviando || !formTitulo.trim()}
+                style={{
+                  padding: '0.6rem 1.25rem',
+                  backgroundColor: enviando || !formTitulo.trim() ? '#1A3A2A' : '#2A7A5A',
+                  color: enviando || !formTitulo.trim() ? '#4B7A5A' : '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: enviando || !formTitulo.trim() ? 'not-allowed' : 'pointer',
+                  transition: 'background 0.15s',
+                }}
+              >
+                {enviando ? 'Enviando…' : 'Enviar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
