@@ -7,6 +7,7 @@ from app.api.casos import router as casos_router
 from app.api.eventos import router as eventos_router
 from app.api.usuarios import router as usuarios_router
 from app.graph.router import router as graph_router
+from app.api.incidentes import router as incidentes_router
 
 
 class HealthResponse(BaseModel):
@@ -28,6 +29,7 @@ app.include_router(casos_router)
 app.include_router(eventos_router)
 app.include_router(usuarios_router)
 app.include_router(graph_router)
+app.include_router(incidentes_router)
 
 
 @app.get("/", response_model=HealthResponse)
