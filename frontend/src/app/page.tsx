@@ -24,6 +24,15 @@ type Usuario = {
   activo: boolean;
 };
 
+type Tarea = {
+  id: number;
+  titulo: string;
+  nodo_titulo?: string | null;
+  nodo_tipo?: string | null;
+  prioridad: string;
+  estado: string;
+};
+
 type Incidente = {
   id: number;
   title: string;
@@ -91,6 +100,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [usuario, setUsuario] = useState<{nombre: string; rol: string} | null>(null);
   const [incidentes, setIncidentes] = useState<Incidente[]>([]);
+  const [misTareas, setMisTareas] = useState<Tarea[]>([]);
+  const [tabTareas, setTabTareas] = useState<'pendientes' | 'finalizadas'>('pendientes');
   const [filtroPrioridad, setFiltroPrioridad] = useState<string>('TODAS');
   const [modalAbierto, setModalAbierto] = useState(false);
   const [formTitulo, setFormTitulo] = useState('');
@@ -152,6 +163,8 @@ export default function Home() {
         setUsuarios(usuariosResponse);
         const incRes = await fetch(`${apiBaseUrl}/incidentes`, { credentials: 'include', cache: 'no-store' });
         if (incRes.ok && active) setIncidentes(await incRes.json());
+        const tareasRes = await fetch(`${apiBaseUrl}/tareas/mis-tareas?incluir_completadas=true`, { credentials: 'include', cache: 'no-store' });
+        if (tareasRes.ok && active) setMisTareas(await tareasRes.json());
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : 'No se pudo conectar con la API');
@@ -270,6 +283,95 @@ export default function Home() {
         {/* Stats */}
         {!loading && !error && (
           <>
+            {/* Mis tareas */}
+            <p style={{
+              fontSize: '11px', color: '#4B5563', textTransform: 'uppercase',
+              letterSpacing: '0.08em', marginBottom: '0.75rem',
+            }}>
+              Mis tareas
+            </p>
+
+            {/* Tabs */}
+            <div style={{ display: 'flex', borderBottom: '1px solid #2A2A2A', marginBottom: '1rem' }}>
+              {(['pendientes', 'finalizadas'] as const).map((tab) => (
+                <button key={tab} onClick={() => setTabTareas(tab)} style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '0.5rem 1rem', fontSize: '13px',
+                  color: tabTareas === tab ? '#2A7A5A' : '#6B7280',
+                  borderBottom: tabTareas === tab ? '2px solid #2A7A5A' : '2px solid transparent',
+                  marginBottom: '-1px', fontFamily: "'DM Sans', sans-serif",
+                  textTransform: 'capitalize', transition: 'color 0.15s',
+                }}>
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            <div style={{
+              backgroundColor: '#1A1A1A', border: '1px solid #2A2A2A',
+              borderRadius: '12px', padding: '1.5rem', marginBottom: '2.5rem',
+            }}>
+              {(() => {
+                const PRIORIDAD_ORDER: Record<string, number> = { CRITICA: 0, ALTA: 1, MEDIA: 2, BAJA: 3 };
+                const PRIORIDAD_COLOR: Record<string, string> = {
+                  CRITICA: '#EF4444', ALTA: '#C8920A', MEDIA: '#6B7280', BAJA: '#4B5563',
+                };
+                const visibles = misTareas
+                  .filter(t => tabTareas === 'pendientes' ? t.estado !== 'COMPLETADA' : t.estado === 'COMPLETADA')
+                  .sort((a, b) => (PRIORIDAD_ORDER[a.prioridad?.toUpperCase()] ?? 9) - (PRIORIDAD_ORDER[b.prioridad?.toUpperCase()] ?? 9));
+                const completada = tabTareas === 'finalizadas';
+                return visibles.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                    {visibles.map((t) => {
+                      const colorP = PRIORIDAD_COLOR[t.prioridad?.toUpperCase()] ?? '#6B7280';
+                      return (
+                        <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                          <button
+                            onClick={async () => {
+                              if (completada) return;
+                              await fetch(`${apiBaseUrl}/tareas/${t.id}/completar`, { method: 'PATCH', credentials: 'include' });
+                              const res = await fetch(`${apiBaseUrl}/tareas/mis-tareas?incluir_completadas=true`, { credentials: 'include', cache: 'no-store' });
+                              if (res.ok) setMisTareas(await res.json());
+                            }}
+                            title={completada ? 'Completada' : 'Marcar como completada'}
+                            style={{
+                              background: 'none',
+                              border: `1.5px solid ${completada ? '#2A7A5A' : '#4B5563'}`,
+                              borderRadius: '50%', width: '18px', height: '18px',
+                              cursor: completada ? 'default' : 'pointer',
+                              flexShrink: 0, marginTop: '2px',
+                              color: completada ? '#2A7A5A' : '#4B5563',
+                              fontSize: '10px', display: 'flex',
+                              alignItems: 'center', justifyContent: 'center',
+                              transition: 'border-color 0.15s',
+                            }}
+                            onMouseEnter={(e) => { if (!completada) { e.currentTarget.style.borderColor = '#2A7A5A'; e.currentTarget.style.color = '#2A7A5A'; }}}
+                            onMouseLeave={(e) => { if (!completada) { e.currentTarget.style.borderColor = '#4B5563'; e.currentTarget.style.color = '#4B5563'; }}}
+                          >
+                            {completada ? '●' : '○'}
+                          </button>
+                          <div>
+                            <p style={{ fontSize: '13px', color: completada ? '#4B5563' : '#F9FAFB', margin: 0, fontWeight: 500, textDecoration: completada ? 'line-through' : 'none' }}>
+                              {t.titulo}
+                            </p>
+                            <p style={{ fontSize: '11px', color: '#6B7280', margin: '2px 0 0' }}>
+                              {[t.nodo_titulo, t.nodo_tipo].filter(Boolean).join(' · ')}
+                              {(t.nodo_titulo || t.nodo_tipo) && ' · '}
+                              <span style={{ color: colorP, fontWeight: 600 }}>{t.prioridad}</span>
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
+                    {completada ? 'Sin tareas finalizadas.' : 'Sin tareas pendientes.'}
+                  </p>
+                );
+              })()}
+            </div>
+
             <p style={{
               fontSize: '11px',
               color: '#4B5563',
