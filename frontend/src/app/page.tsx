@@ -24,6 +24,13 @@ type Usuario = {
   activo: boolean;
 };
 
+type Incidente = {
+  id: number;
+  title: string;
+  prioridad: string;
+  app_source?: string | null;
+};
+
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8002';
 
 async function fetchJson<T>(path: string): Promise<T> {
@@ -82,6 +89,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [usuario, setUsuario] = useState<{nombre: string; rol: string} | null>(null);
+  const [incidentes, setIncidentes] = useState<Incidente[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -104,6 +112,8 @@ export default function Home() {
         setCasos(casosResponse);
         setEventos(eventosResponse);
         setUsuarios(usuariosResponse);
+        const incRes = await fetch(`${apiBaseUrl}/incidentes`, { credentials: 'include', cache: 'no-store' });
+        if (incRes.ok && active) setIncidentes(await incRes.json());
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : 'No se pudo conectar con la API');
@@ -272,6 +282,88 @@ export default function Home() {
               ) : (
                 <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
                   Sin actividad reciente.
+                </p>
+              )}
+            </div>
+
+            {/* Incidentes */}
+            <p style={{
+              fontSize: '11px',
+              color: '#4B5563',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              marginBottom: '0.75rem',
+              marginTop: '2.5rem',
+            }}>
+              Incidentes
+            </p>
+            <div style={{
+              backgroundColor: '#1A1A1A',
+              border: '1px solid #2A2A2A',
+              borderRadius: '12px',
+              padding: '1.5rem',
+            }}>
+              {incidentes.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {incidentes.map((inc) => {
+                    const PRIORIDAD_COLOR: Record<string, string> = {
+                      CRITICA: '#EF4444',
+                      ALTA:    '#C8920A',
+                      MEDIA:   '#6B7280',
+                      BAJA:    '#4B5563',
+                    };
+                    const color = PRIORIDAD_COLOR[(inc.prioridad ?? '').toUpperCase()] ?? '#6B7280';
+                    return (
+                      <div key={inc.id} style={{
+                        borderBottom: '1px solid #2A2A2A',
+                        paddingBottom: '1rem',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        justifyContent: 'space-between',
+                        gap: '1rem',
+                      }}>
+                        <div>
+                          <p style={{ fontSize: '13px', color: '#F9FAFB', margin: 0, fontWeight: 500 }}>
+                            {inc.title}
+                          </p>
+                          <p style={{ fontSize: '12px', margin: '4px 0 0' }}>
+                            <span style={{ color, fontWeight: 600 }}>{inc.prioridad}</span>
+                            {inc.app_source && (
+                              <span style={{ color: '#4B5563' }}> · {inc.app_source}</span>
+                            )}
+                          </p>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            await fetch(`${apiBaseUrl}/incidentes/${inc.id}/resolver`, {
+                              method: 'PATCH',
+                              credentials: 'include',
+                            });
+                            const res = await fetch(`${apiBaseUrl}/incidentes`, { credentials: 'include', cache: 'no-store' });
+                            if (res.ok) setIncidentes(await res.json());
+                          }}
+                          style={{
+                            padding: '4px 12px',
+                            fontSize: '11px',
+                            fontWeight: 500,
+                            backgroundColor: '#2A2A2A',
+                            color: '#9CA3AF',
+                            border: '1px solid #3A3A3A',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                          }}
+                        >
+                          Resolver
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
+                  Sin incidentes activos.
                 </p>
               )}
             </div>
