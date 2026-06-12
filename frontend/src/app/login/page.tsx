@@ -27,7 +27,7 @@ export default function LoginPage() {
       if (!res.ok) throw new Error(data.detail || 'Credenciales inválidas');
       // Solo guardamos datos no sensibles — el token nunca toca JS
       sessionStorage.setItem('usuario', JSON.stringify(data.usuario));
-      router.push('/');
+      window.location.href = '/';
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al iniciar sesión');
     } finally {

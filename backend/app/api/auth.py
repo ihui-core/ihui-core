@@ -42,6 +42,7 @@ def login(
         secure=False,  # True en producción con HTTPS
         samesite="lax",
         max_age=60 * 480,
+        path="/",
     )
 
     return {
