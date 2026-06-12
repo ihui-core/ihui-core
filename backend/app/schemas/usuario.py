@@ -1,19 +1,18 @@
 from datetime import datetime
 from typing import Optional
-
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel
+import uuid
 
 class UsuarioCreate(BaseModel):
-    nombre: str = Field(..., min_length=1)
-    email: str = Field(..., min_length=1)
-    activo: Optional[bool] = True
-
-
-class UsuarioResponse(BaseModel):
-    id: int
     nombre: str
     email: str
+    activo: Optional[bool] = True
+
+class UsuarioResponse(BaseModel):
+    id: uuid.UUID
+    nombre: str
+    email: str
+    rol: str
     activo: bool
     fecha_creacion: Optional[datetime] = None
 

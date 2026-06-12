@@ -81,11 +81,20 @@ export default function Home() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [usuario, setUsuario] = useState<{nombre: string; rol: string} | null>(null);
 
   useEffect(() => {
     let active = true;
     async function loadDashboard() {
       try {
+        const meRes = await fetch(`${apiBaseUrl}/auth/me`, { credentials: 'include', cache: 'no-store' });
+        if (!meRes.ok) {
+          window.location.href = '/login';
+          return;
+        }
+        const meData = await meRes.json();
+        if (active) setUsuario(meData);
+
         const [casosResponse, eventosResponse, usuariosResponse] = await Promise.all([
           fetchJson<Caso[]>('/casos/'),
           fetchJson<Evento[]>('/eventos'),
@@ -142,6 +151,11 @@ export default function Home() {
           <p style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>
             Gobernabilidad institucional · {mes}
           </p>
+          {usuario && (
+            <p style={{ fontSize: '13px', color: '#2A7A5A', marginTop: '2px' }}>
+              {usuario.nombre} · {usuario.rol}
+            </p>
+          )}
         </div>
 
         {/* Buscador */}
