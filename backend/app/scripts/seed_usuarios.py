@@ -7,10 +7,7 @@ from app.models.caso import Caso  # noqa: F401
 from app.models.evento import Evento  # noqa: F401
 from app.models.tarea import Tarea  # noqa: F401
 from app.models.usuario import Usuario
-import hashlib
-
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+from app.core.security import hash_password
 
 usuarios = [
     {

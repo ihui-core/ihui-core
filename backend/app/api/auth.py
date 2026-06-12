@@ -1,0 +1,43 @@
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
+from app.core.database import get_db
+from app.core.security import verify_password, create_access_token, get_current_user
+from app.models.usuario import Usuario
+
+router = APIRouter(prefix="/auth", tags=["Auth"])
+
+@router.post("/login")
+def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    usuario = db.query(Usuario).filter(Usuario.email == form.username).first()
+    if not usuario or not verify_password(form.password, usuario.hashed_password):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    if not usuario.activo:
+        raise HTTPException(status_code=403, detail="Usuario inactivo")
+
+    token = create_access_token({
+        "sub": str(usuario.id),
+        "email": usuario.email,
+        "rol": usuario.rol,
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "usuario": {
+            "id": str(usuario.id),
+            "nombre": usuario.nombre,
+            "email": usuario.email,
+            "rol": usuario.rol,
+        }
+    }
+
+@router.get("/me")
+def me(current_user: Usuario = Depends(get_current_user)):
+    return {
+        "id": str(current_user.id),
+        "nombre": current_user.nombre,
+        "email": current_user.email,
+        "rol": current_user.rol,
+        "activo": current_user.activo,
+    }
