@@ -123,6 +123,10 @@ export default function Home() {
   const [tareaExpandida, setTareaExpandida] = useState<number | null>(null);
   const [subitems, setSubitems] = useState<Record<number, any[]>>({});
   const [nuevoSubitem, setNuevoSubitem] = useState<Record<number, string>>({});
+  const [tramites, setTramites] = useState<any[]>([]);
+  const [tramiteSel, setTramiteSel] = useState<string>('');
+  const [nodoTitulo, setNodoTitulo] = useState<string>('');
+  const [msgGeneradas, setMsgGeneradas] = useState<string>('');
 
   const puedeAsignar = usuario && ['superadmin', 'notario', 'cfo', 'coordinador', 'abogado'].includes(usuario.rol);
 
@@ -226,6 +230,10 @@ export default function Home() {
         if (incRes.ok && active) setIncidentes(await incRes.json());
         const tareasRes = await fetch(`${apiBaseUrl}/tareas/mis-tareas?incluir_completadas=true`, { credentials: 'include', cache: 'no-store' });
         if (tareasRes.ok && active) setMisTareas(await tareasRes.json());
+        if (['superadmin', 'notario', 'cfo', 'coordinador', 'abogado'].includes(meData.rol)) {
+          const trRes = await fetch(`${apiBaseUrl}/tramites`, { credentials: 'include', cache: 'no-store' });
+          if (trRes.ok && active) setTramites(await trRes.json());
+        }
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : 'No se pudo conectar con la API');
@@ -603,6 +611,87 @@ export default function Home() {
                 );
               })()}
             </div>
+
+            {/* Generar tareas desde trámite */}
+            {puedeAsignar && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', marginTop: '2rem' }}>
+                  <p style={{ fontSize: '11px', color: '#4B5563', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+                    Generar tareas desde trámite
+                  </p>
+                </div>
+                <div style={{ backgroundColor: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: '12px', padding: '1.25rem', marginBottom: '2.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {tramites.length === 0 ? (
+                    <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>No hay tipos de trámite configurados.</p>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <select
+                          value={tramiteSel}
+                          onChange={(e) => setTramiteSel(e.target.value)}
+                          style={{ flex: 1, minWidth: '200px', padding: '0.6rem 0.75rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: tramiteSel ? '#F9FAFB' : '#6B7280', fontSize: '13px', outline: 'none', fontFamily: "'DM Sans', sans-serif" }}
+                        >
+                          <option value="">Seleccionar tipo de trámite...</option>
+                          {tramites.map((tr: any) => (
+                            <option key={tr.id} value={String(tr.id)}>
+                              {tr.nombre} ({tr.plantilla?.length ?? 0} tareas)
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          value={nodoTitulo}
+                          onChange={(e) => setNodoTitulo(e.target.value)}
+                          placeholder="Operación / expediente relacionado"
+                          style={{ flex: 2, minWidth: '200px', padding: '0.6rem 0.75rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '13px', outline: 'none', fontFamily: "'DM Sans', sans-serif" }}
+                        />
+                        <button
+                          disabled={!tramiteSel}
+                          onClick={async () => {
+                            if (!tramiteSel) return;
+                            const res = await fetch(`${apiBaseUrl}/tramites/generar-tareas`, {
+                              method: 'POST',
+                              credentials: 'include',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                tipo_tramite_id: parseInt(tramiteSel),
+                                nodo_titulo: nodoTitulo || null,
+                                nodo_tipo: 'OPERACION',
+                              }),
+                            });
+                            if (res.ok) {
+                              const data = await res.json();
+                              setMsgGeneradas(`✓ ${data.tareas_creadas} tareas generadas`);
+                              setTramiteSel('');
+                              setNodoTitulo('');
+                              await recargarTareas();
+                              setTimeout(() => setMsgGeneradas(''), 4000);
+                            }
+                          }}
+                          style={{
+                            padding: '0.6rem 1.25rem',
+                            borderRadius: '8px',
+                            backgroundColor: tramiteSel ? '#2A7A5A' : '#1A3A2A',
+                            color: tramiteSel ? '#fff' : '#4B7A5A',
+                            border: 'none',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: tramiteSel ? 'pointer' : 'not-allowed',
+                            whiteSpace: 'nowrap',
+                            fontFamily: "'DM Sans', sans-serif",
+                            transition: 'background 0.15s',
+                          }}
+                        >
+                          Generar tareas
+                        </button>
+                      </div>
+                      {msgGeneradas && (
+                        <p style={{ fontSize: '12px', color: '#2A7A5A', margin: 0, fontWeight: 600 }}>{msgGeneradas}</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              </>
+            )}
 
             <p style={{
               fontSize: '11px',
