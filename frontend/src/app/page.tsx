@@ -386,14 +386,23 @@ export default function Home() {
               borderRadius: '12px', padding: '1.5rem', marginBottom: '2.5rem',
             }}>
               {(() => {
+                const ESTADOS_TAREA: Record<string, { label: string; color: string }> = {
+                  PENDING:     { label: 'Pendiente',  color: '#6B7280' },
+                  IN_PROGRESS: { label: 'En proceso', color: '#C8920A' },
+                  BLOCKED:     { label: 'Bloqueada',  color: '#B84A1E' },
+                  DONE:        { label: 'Completada', color: '#2A7A5A' },
+                  CANCELLED:   { label: 'Cancelada',  color: '#4B5563' },
+                };
                 const PRIORIDAD_ORDER: Record<string, number> = { CRITICA: 0, ALTA: 1, MEDIA: 2, BAJA: 3 };
                 const PRIORIDAD_COLOR: Record<string, string> = {
                   CRITICA: '#EF4444', ALTA: '#C8920A', MEDIA: '#6B7280', BAJA: '#4B5563',
                 };
                 const visibles = misTareas
-                  .filter(t => tabTareas === 'pendientes' ? t.estado !== 'COMPLETADA' : t.estado === 'COMPLETADA')
+                  .filter(t => tabTareas === 'pendientes'
+                    ? t.estado !== 'DONE' && t.estado !== 'CANCELLED'
+                    : t.estado === 'DONE' || t.estado === 'CANCELLED')
                   .sort((a, b) => (PRIORIDAD_ORDER[a.prioridad?.toUpperCase()] ?? 9) - (PRIORIDAD_ORDER[b.prioridad?.toUpperCase()] ?? 9));
-                const completada = tabTareas === 'finalizadas';
+                const esFinalizada = tabTareas === 'finalizadas';
                 return visibles.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
                     {visibles.map((t) => {
@@ -402,37 +411,57 @@ export default function Home() {
                       const fechaFmt = t.fecha_vencimiento
                         ? new Date(t.fecha_vencimiento).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })
                         : 'Sin fecha límite';
+                      const estadoInfo = ESTADOS_TAREA[t.estado] ?? { label: t.estado, color: '#6B7280' };
+                      const tituloApagado = t.estado === 'DONE' || t.estado === 'CANCELLED';
                       return (
                         <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-                          <button
-                            onClick={async () => {
-                              if (completada) return;
-                              await fetch(`${apiBaseUrl}/tareas/${t.id}/completar`, { method: 'PATCH', credentials: 'include' });
-                              const res = await fetch(`${apiBaseUrl}/tareas/mis-tareas?incluir_completadas=true`, { credentials: 'include', cache: 'no-store' });
-                              if (res.ok) setMisTareas(await res.json());
+                          <select
+                            value={t.estado}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={async (e) => {
+                              const nuevoEstado = e.target.value;
+                              const res = await fetch(`${apiBaseUrl}/tareas/${t.id}/estado`, {
+                                method: 'PATCH',
+                                credentials: 'include',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ estado: nuevoEstado }),
+                              });
+                              if (res.ok) {
+                                await recargarTareas();
+                              } else if (res.status === 403) {
+                                const data = await res.json();
+                                alert(data.detail ?? 'No tienes permiso para este cambio');
+                              }
                             }}
-                            title={completada ? 'Completada' : 'Marcar como completada'}
                             style={{
-                              background: 'none',
-                              border: `1.5px solid ${completada ? '#2A7A5A' : '#4B5563'}`,
-                              borderRadius: '50%', width: '18px', height: '18px',
-                              cursor: completada ? 'default' : 'pointer',
-                              flexShrink: 0, marginTop: '2px',
-                              color: completada ? '#2A7A5A' : '#4B5563',
-                              fontSize: '10px', display: 'flex',
-                              alignItems: 'center', justifyContent: 'center',
-                              transition: 'border-color 0.15s',
+                              appearance: 'none',
+                              WebkitAppearance: 'none',
+                              background: '#0D0D0D',
+                              border: `1.5px solid ${estadoInfo.color}`,
+                              borderRadius: '6px',
+                              color: estadoInfo.color,
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              padding: '3px 6px',
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                              marginTop: '1px',
+                              fontFamily: "'DM Sans', sans-serif",
+                              outline: 'none',
+                              minWidth: '88px',
                             }}
-                            onMouseEnter={(e) => { if (!completada) { e.currentTarget.style.borderColor = '#2A7A5A'; e.currentTarget.style.color = '#2A7A5A'; }}}
-                            onMouseLeave={(e) => { if (!completada) { e.currentTarget.style.borderColor = '#4B5563'; e.currentTarget.style.color = '#4B5563'; }}}
                           >
-                            {completada ? '●' : '○'}
-                          </button>
+                            <option value="PENDING">Pendiente</option>
+                            <option value="IN_PROGRESS">En proceso</option>
+                            <option value="BLOCKED">Bloqueada</option>
+                            <option value="DONE">Completada</option>
+                            {puedeAsignar && <option value="CANCELLED">Cancelada</option>}
+                          </select>
                           <div
                             onClick={() => setTareaExpandida(expandida ? null : t.id)}
                             style={{ cursor: 'pointer', flex: 1, minWidth: 0 }}
                           >
-                            <p style={{ fontSize: '13px', color: completada ? '#4B5563' : '#F9FAFB', margin: 0, fontWeight: 500, textDecoration: completada ? 'line-through' : 'none' }}>
+                            <p style={{ fontSize: '13px', color: tituloApagado ? '#4B5563' : '#F9FAFB', margin: 0, fontWeight: 500, textDecoration: tituloApagado ? 'line-through' : 'none' }}>
                               {t.titulo}
                             </p>
                             <p style={{ fontSize: '11px', color: '#6B7280', margin: '2px 0 0' }}>
@@ -471,7 +500,7 @@ export default function Home() {
                   </div>
                 ) : (
                   <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
-                    {completada ? 'Sin tareas finalizadas.' : 'Sin tareas pendientes.'}
+                    {esFinalizada ? 'Sin tareas finalizadas.' : 'Sin tareas pendientes.'}
                   </p>
                 );
               })()}
