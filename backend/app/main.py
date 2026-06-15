@@ -10,6 +10,7 @@ from app.graph.router import router as graph_router
 from app.api.incidentes import router as incidentes_router
 from app.api.auth import router as auth_router
 from app.api.tareas import router as tareas_router
+from app.api.subitems import router as subitems_router
 
 
 class HealthResponse(BaseModel):
@@ -38,6 +39,7 @@ app.include_router(graph_router)
 app.include_router(incidentes_router)
 app.include_router(auth_router)
 app.include_router(tareas_router)
+app.include_router(subitems_router)
 
 
 @app.get("/", response_model=HealthResponse)

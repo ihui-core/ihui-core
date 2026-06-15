@@ -121,12 +121,22 @@ export default function Home() {
   const [asignarFechaVenc, setAsignarFechaVenc] = useState('');
   const [enviandoAsignar, setEnviandoAsignar] = useState(false);
   const [tareaExpandida, setTareaExpandida] = useState<number | null>(null);
+  const [subitems, setSubitems] = useState<Record<number, any[]>>({});
+  const [nuevoSubitem, setNuevoSubitem] = useState<Record<number, string>>({});
 
   const puedeAsignar = usuario && ['superadmin', 'notario', 'cfo', 'coordinador', 'abogado'].includes(usuario.rol);
 
   const recargarTareas = async () => {
     const res = await fetch(`${apiBaseUrl}/tareas/mis-tareas?incluir_completadas=true`, { credentials: 'include', cache: 'no-store' });
     if (res.ok) setMisTareas(await res.json());
+  };
+
+  const cargarSubitems = async (tareaId: number) => {
+    const res = await fetch(`${apiBaseUrl}/subitems/tarea/${tareaId}`, { credentials: 'include', cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      setSubitems(prev => ({ ...prev, [tareaId]: data }));
+    }
   };
 
   const recargarIncidentes = async () => {
@@ -245,8 +255,12 @@ export default function Home() {
       backgroundColor: '#141414',
       padding: '2rem',
       fontFamily: "'DM Sans', sans-serif",
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      width: '100%',
     }}>
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '1400px', width: '100%', flexShrink: 0 }}>
 
         {/* Header */}
         <div style={{ marginBottom: '2.5rem' }}>
@@ -458,7 +472,11 @@ export default function Home() {
                             {puedeAsignar && <option value="CANCELLED">Cancelada</option>}
                           </select>
                           <div
-                            onClick={() => setTareaExpandida(expandida ? null : t.id)}
+                            onClick={async () => {
+                              const nextId = expandida ? null : t.id;
+                              setTareaExpandida(nextId);
+                              if (nextId !== null) await cargarSubitems(nextId);
+                            }}
                             style={{ cursor: 'pointer', flex: 1, minWidth: 0 }}
                           >
                             <p style={{ fontSize: '13px', color: tituloApagado ? '#4B5563' : '#F9FAFB', margin: 0, fontWeight: 500, textDecoration: tituloApagado ? 'line-through' : 'none' }}>
@@ -472,7 +490,7 @@ export default function Home() {
                             {expandida && (
                               <div style={{
                                 marginTop: '0.625rem',
-                                padding: '0.625rem 0.75rem',
+                                padding: '0.75rem',
                                 backgroundColor: '#141414',
                                 borderRadius: '8px',
                                 border: '1px solid #2A2A2A',
@@ -491,6 +509,86 @@ export default function Home() {
                                     Asignada por: {t.asignado_por}
                                   </p>
                                 )}
+
+                                {/* Checklist */}
+                                {(() => {
+                                  const items = subitems[t.id] ?? [];
+                                  const completados = items.filter((s: any) => s.completado).length;
+                                  return (
+                                    <div style={{ marginTop: '0.625rem', borderTop: '1px solid #2A2A2A', paddingTop: '0.625rem' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                        <span style={{ fontSize: '11px', color: '#4B5563', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Checklist</span>
+                                        {items.length > 0 && (
+                                          <span style={{ fontSize: '11px', color: completados === items.length ? '#2A7A5A' : '#6B7280' }}>
+                                            {completados}/{items.length} completados
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '0.5rem' }}>
+                                        {items.map((s: any) => (
+                                          <div key={s.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                                            <button
+                                              onClick={async (e) => {
+                                                e.stopPropagation();
+                                                await fetch(`${apiBaseUrl}/subitems/${s.id}/toggle`, { method: 'PATCH', credentials: 'include' });
+                                                await cargarSubitems(t.id);
+                                              }}
+                                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '14px', color: s.completado ? '#2A7A5A' : '#6B7280', flexShrink: 0, lineHeight: 1.2 }}
+                                            >
+                                              {s.completado ? '☑' : '☐'}
+                                            </button>
+                                            <div>
+                                              <span style={{ fontSize: '12px', color: s.completado ? '#4B5563' : '#9CA3AF', textDecoration: s.completado ? 'line-through' : 'none' }}>
+                                                {s.texto}
+                                              </span>
+                                              {s.completado && s.completado_por && (
+                                                <p style={{ fontSize: '10px', color: '#4B5563', margin: '1px 0 0' }}>✓ {s.completado_por}</p>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: '6px' }}>
+                                        <input
+                                          value={nuevoSubitem[t.id] ?? ''}
+                                          onChange={(e) => setNuevoSubitem(prev => ({ ...prev, [t.id]: e.target.value }))}
+                                          onKeyDown={async (e) => {
+                                            if (e.key !== 'Enter') return;
+                                            e.preventDefault();
+                                            const texto = (nuevoSubitem[t.id] ?? '').trim();
+                                            if (!texto) return;
+                                            await fetch(`${apiBaseUrl}/subitems`, {
+                                              method: 'POST', credentials: 'include',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ tarea_id: t.id, texto, orden: items.length }),
+                                            });
+                                            setNuevoSubitem(prev => ({ ...prev, [t.id]: '' }));
+                                            await cargarSubitems(t.id);
+                                          }}
+                                          placeholder="Nuevo paso..."
+                                          style={{ flex: 1, padding: '4px 8px', borderRadius: '6px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '12px', outline: 'none', fontFamily: "'DM Sans', sans-serif" }}
+                                        />
+                                        <button
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            const texto = (nuevoSubitem[t.id] ?? '').trim();
+                                            if (!texto) return;
+                                            await fetch(`${apiBaseUrl}/subitems`, {
+                                              method: 'POST', credentials: 'include',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ tarea_id: t.id, texto, orden: items.length }),
+                                            });
+                                            setNuevoSubitem(prev => ({ ...prev, [t.id]: '' }));
+                                            await cargarSubitems(t.id);
+                                          }}
+                                          style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: '#1A3A2A', color: '#2A7A5A', border: '1px solid #2A7A5A', fontSize: '11px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans', sans-serif" }}
+                                        >
+                                          + Agregar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             )}
                           </div>
