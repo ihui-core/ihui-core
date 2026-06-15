@@ -27,10 +27,13 @@ type Usuario = {
 type Tarea = {
   id: number;
   titulo: string;
+  descripcion?: string | null;
   nodo_titulo?: string | null;
   nodo_tipo?: string | null;
   prioridad: string;
   estado: string;
+  fecha_vencimiento?: string | null;
+  asignado_por?: string | null;
 };
 
 type Incidente = {
@@ -109,9 +112,57 @@ export default function Home() {
   const [formPrioridad, setFormPrioridad] = useState('MEDIA');
   const [enviando, setEnviando] = useState(false);
 
+  const [modalAsignarAbierto, setModalAsignarAbierto] = useState(false);
+  const [asignarTitulo, setAsignarTitulo] = useState('');
+  const [asignarDesc, setAsignarDesc] = useState('');
+  const [asignarResponsable, setAsignarResponsable] = useState('');
+  const [asignarNodoTitulo, setAsignarNodoTitulo] = useState('');
+  const [asignarPrioridad, setAsignarPrioridad] = useState('MEDIA');
+  const [asignarFechaVenc, setAsignarFechaVenc] = useState('');
+  const [enviandoAsignar, setEnviandoAsignar] = useState(false);
+  const [tareaExpandida, setTareaExpandida] = useState<number | null>(null);
+
+  const puedeAsignar = usuario && ['superadmin', 'notario', 'cfo', 'coordinador', 'abogado'].includes(usuario.rol);
+
+  const recargarTareas = async () => {
+    const res = await fetch(`${apiBaseUrl}/tareas/mis-tareas?incluir_completadas=true`, { credentials: 'include', cache: 'no-store' });
+    if (res.ok) setMisTareas(await res.json());
+  };
+
   const recargarIncidentes = async () => {
     const res = await fetch(`${apiBaseUrl}/incidentes`, { credentials: 'include', cache: 'no-store' });
     if (res.ok) setIncidentes(await res.json());
+  };
+
+  const handleAsignar = async () => {
+    if (!asignarTitulo.trim() || !asignarResponsable) return;
+    setEnviandoAsignar(true);
+    try {
+      await fetch(`${apiBaseUrl}/tareas/asignar`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titulo: asignarTitulo,
+          descripcion: asignarDesc || null,
+          responsable_ref: asignarResponsable,
+          nodo_titulo: asignarNodoTitulo || null,
+          nodo_tipo: 'TAREA',
+          prioridad: asignarPrioridad,
+          fecha_vencimiento: asignarFechaVenc || null,
+        }),
+      });
+      setModalAsignarAbierto(false);
+      setAsignarTitulo('');
+      setAsignarDesc('');
+      setAsignarResponsable('');
+      setAsignarNodoTitulo('');
+      setAsignarPrioridad('MEDIA');
+      setAsignarFechaVenc('');
+      await recargarTareas();
+    } finally {
+      setEnviandoAsignar(false);
+    }
   };
 
   const handleEnviar = async () => {
@@ -284,12 +335,35 @@ export default function Home() {
         {!loading && !error && (
           <>
             {/* Mis tareas */}
-            <p style={{
-              fontSize: '11px', color: '#4B5563', textTransform: 'uppercase',
-              letterSpacing: '0.08em', marginBottom: '0.75rem',
-            }}>
-              Mis tareas
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <p style={{
+                fontSize: '11px', color: '#4B5563', textTransform: 'uppercase',
+                letterSpacing: '0.08em', margin: 0,
+              }}>
+                Mis tareas
+              </p>
+              {puedeAsignar && (
+                <button
+                  onClick={() => setModalAsignarAbierto(true)}
+                  style={{
+                    background: 'none',
+                    border: '1px solid #2A7A5A',
+                    borderRadius: '6px',
+                    color: '#2A7A5A',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '3px 10px',
+                    cursor: 'pointer',
+                    fontFamily: "'DM Sans', sans-serif",
+                    transition: 'background 0.15s, color 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#2A7A5A'; e.currentTarget.style.color = '#fff'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#2A7A5A'; }}
+                >
+                  + Asignar tarea
+                </button>
+              )}
+            </div>
 
             {/* Tabs */}
             <div style={{ display: 'flex', borderBottom: '1px solid #2A2A2A', marginBottom: '1rem' }}>
@@ -324,6 +398,10 @@ export default function Home() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
                     {visibles.map((t) => {
                       const colorP = PRIORIDAD_COLOR[t.prioridad?.toUpperCase()] ?? '#6B7280';
+                      const expandida = tareaExpandida === t.id;
+                      const fechaFmt = t.fecha_vencimiento
+                        ? new Date(t.fecha_vencimiento).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })
+                        : 'Sin fecha límite';
                       return (
                         <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
                           <button
@@ -350,7 +428,10 @@ export default function Home() {
                           >
                             {completada ? '●' : '○'}
                           </button>
-                          <div>
+                          <div
+                            onClick={() => setTareaExpandida(expandida ? null : t.id)}
+                            style={{ cursor: 'pointer', flex: 1, minWidth: 0 }}
+                          >
                             <p style={{ fontSize: '13px', color: completada ? '#4B5563' : '#F9FAFB', margin: 0, fontWeight: 500, textDecoration: completada ? 'line-through' : 'none' }}>
                               {t.titulo}
                             </p>
@@ -359,6 +440,30 @@ export default function Home() {
                               {(t.nodo_titulo || t.nodo_tipo) && ' · '}
                               <span style={{ color: colorP, fontWeight: 600 }}>{t.prioridad}</span>
                             </p>
+                            {expandida && (
+                              <div style={{
+                                marginTop: '0.625rem',
+                                padding: '0.625rem 0.75rem',
+                                backgroundColor: '#141414',
+                                borderRadius: '8px',
+                                border: '1px solid #2A2A2A',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px',
+                              }}>
+                                <p style={{ fontSize: '12px', color: '#9CA3AF', margin: 0 }}>
+                                  {t.descripcion || 'Sin descripción'}
+                                </p>
+                                <p style={{ fontSize: '11px', color: '#6B7280', margin: 0 }}>
+                                  Vence: {fechaFmt}
+                                </p>
+                                {t.asignado_por && (
+                                  <p style={{ fontSize: '11px', color: '#6B7280', margin: 0 }}>
+                                    Asignada por: {t.asignado_por}
+                                  </p>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -619,6 +724,132 @@ export default function Home() {
           </span>
         </div>
       </div>
+
+      {/* Modal asignar tarea */}
+      {modalAsignarAbierto && (
+        <div
+          onClick={() => setModalAsignarAbierto(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 100,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: '#1A1A1A',
+              border: '1px solid #2A2A2A',
+              borderRadius: '16px',
+              padding: '2rem',
+              width: '100%',
+              maxWidth: '480px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#F9FAFB' }}>
+              Asignar tarea
+            </h2>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '11px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Título *</label>
+              <input
+                value={asignarTitulo}
+                onChange={(e) => setAsignarTitulo(e.target.value)}
+                placeholder="Título de la tarea"
+                style={{ padding: '0.65rem 0.875rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '13px', outline: 'none' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '11px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Descripción</label>
+              <textarea
+                value={asignarDesc}
+                onChange={(e) => setAsignarDesc(e.target.value)}
+                placeholder="Detalles opcionales..."
+                rows={3}
+                style={{ padding: '0.65rem 0.875rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '13px', outline: 'none', resize: 'vertical', fontFamily: "'DM Sans', sans-serif" }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '11px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Asignar a *</label>
+              <select
+                value={asignarResponsable}
+                onChange={(e) => setAsignarResponsable(e.target.value)}
+                style={{ padding: '0.65rem 0.875rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: asignarResponsable ? '#F9FAFB' : '#6B7280', fontSize: '13px', outline: 'none' }}
+              >
+                <option value="">Seleccionar usuario...</option>
+                {usuarios.map((u) => (
+                  <option key={u.id} value={u.email}>{u.nombre} · {u.email}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '11px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Relacionado con</label>
+              <input
+                value={asignarNodoTitulo}
+                onChange={(e) => setAsignarNodoTitulo(e.target.value)}
+                placeholder="Caso, expediente, proyecto..."
+                style={{ padding: '0.65rem 0.875rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '13px', outline: 'none' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                <label style={{ fontSize: '11px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Prioridad</label>
+                <select
+                  value={asignarPrioridad}
+                  onChange={(e) => setAsignarPrioridad(e.target.value)}
+                  style={{ padding: '0.65rem 0.875rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '13px', outline: 'none' }}
+                >
+                  <option value="BAJA">Baja</option>
+                  <option value="MEDIA">Media</option>
+                  <option value="ALTA">Alta</option>
+                  <option value="CRITICA">Crítica</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                <label style={{ fontSize: '11px', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Fecha límite</label>
+                <input
+                  type="date"
+                  value={asignarFechaVenc}
+                  onChange={(e) => setAsignarFechaVenc(e.target.value)}
+                  style={{ padding: '0.65rem 0.875rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '13px', outline: 'none', colorScheme: 'dark' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <button
+                onClick={() => setModalAsignarAbierto(false)}
+                style={{ padding: '0.6rem 1.25rem', backgroundColor: 'transparent', color: '#6B7280', border: '1px solid #2A2A2A', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAsignar}
+                disabled={enviandoAsignar || !asignarTitulo.trim() || !asignarResponsable}
+                style={{
+                  padding: '0.6rem 1.25rem',
+                  backgroundColor: (enviandoAsignar || !asignarTitulo.trim() || !asignarResponsable) ? '#1A3A2A' : '#2A7A5A',
+                  color: (enviandoAsignar || !asignarTitulo.trim() || !asignarResponsable) ? '#4B7A5A' : '#fff',
+                  border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                  cursor: (enviandoAsignar || !asignarTitulo.trim() || !asignarResponsable) ? 'not-allowed' : 'pointer',
+                  transition: 'background 0.15s', fontFamily: "'DM Sans', sans-serif",
+                }}
+              >
+                {enviandoAsignar ? 'Asignando…' : 'Asignar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       {modalAbierto && (
