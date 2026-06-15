@@ -21,6 +21,7 @@ class Tarea(Base):
 
     responsable = Column(String(255), nullable=False)
     responsable_ref = Column(String(255), nullable=True)
+    asignado_por = Column(String(255), nullable=True)
     agente = Column(String(50), nullable=False)
     prioridad = Column(String(20), nullable=False, default="MEDIA")
     estado = Column(String(20), nullable=False, default="PENDIENTE")

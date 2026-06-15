@@ -6,6 +6,7 @@ from typing import Optional
 from datetime import datetime, timezone
 import uuid
 from app.core.database import get_db
+from app.core.permisos import puede_asignar
 from app.core.security import get_current_user
 from app.models.tarea import Tarea
 from app.models.usuario import Usuario
@@ -30,6 +31,7 @@ class TareaResponse(BaseModel):
     nodo_tipo: Optional[str]
     responsable: str
     responsable_ref: Optional[str]
+    asignado_por: Optional[str] = None
     prioridad: str
     estado: str
     fecha_creacion: Optional[datetime]
@@ -52,6 +54,47 @@ def crear_tarea(
         nodo_tipo=data.nodo_tipo,
         responsable=data.responsable_ref,
         responsable_ref=data.responsable_ref,
+        agente="humano",
+        prioridad=data.prioridad,
+        estado="PENDIENTE",
+        fecha_vencimiento=data.fecha_vencimiento,
+    )
+    db.add(tarea)
+    db.commit()
+    db.refresh(tarea)
+    return tarea
+
+class TareaAsignar(BaseModel):
+    titulo: str
+    descripcion: Optional[str] = None
+    nodo_id: Optional[uuid.UUID] = None
+    nodo_titulo: Optional[str] = None
+    nodo_tipo: Optional[str] = None
+    responsable_ref: str  # a quién se le asigna (email o nombre)
+    prioridad: str = "MEDIA"
+    fecha_vencimiento: Optional[datetime] = None
+
+@router.post("/asignar", response_model=TareaResponse)
+def asignar_tarea(
+    data: TareaAsignar,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    if not puede_asignar(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="No tienes permiso para asignar tareas a otros"
+        )
+
+    tarea = Tarea(
+        titulo=data.titulo,
+        descripcion=data.descripcion,
+        nodo_id=data.nodo_id,
+        nodo_titulo=data.nodo_titulo,
+        nodo_tipo=data.nodo_tipo,
+        responsable=data.responsable_ref,
+        responsable_ref=data.responsable_ref,
+        asignado_por=current_user.email,
         agente="humano",
         prioridad=data.prioridad,
         estado="PENDIENTE",
