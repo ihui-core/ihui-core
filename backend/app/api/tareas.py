@@ -56,7 +56,7 @@ def crear_tarea(
         responsable_ref=data.responsable_ref,
         agente="humano",
         prioridad=data.prioridad,
-        estado="PENDIENTE",
+        estado="PENDING",
         fecha_vencimiento=data.fecha_vencimiento,
     )
     db.add(tarea)
@@ -97,7 +97,7 @@ def asignar_tarea(
         asignado_por=current_user.email,
         agente="humano",
         prioridad=data.prioridad,
-        estado="PENDIENTE",
+        estado="PENDING",
         fecha_vencimiento=data.fecha_vencimiento,
     )
     db.add(tarea)
@@ -137,8 +137,45 @@ def completar_tarea(
     tarea = db.query(Tarea).filter(Tarea.id == tarea_id).first()
     if not tarea:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
-    tarea.estado = "COMPLETADA"
+    tarea.estado = "DONE"
     tarea.fecha_cierre = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(tarea)
+    return tarea
+
+ESTADOS_VALIDOS = {"PENDING", "IN_PROGRESS", "BLOCKED", "DONE", "CANCELLED"}
+
+class CambiarEstado(BaseModel):
+    estado: str
+
+@router.patch("/{tarea_id}/estado", response_model=TareaResponse)
+def cambiar_estado(
+    tarea_id: int,
+    data: CambiarEstado,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    if data.estado not in ESTADOS_VALIDOS:
+        raise HTTPException(status_code=400, detail=f"Estado inválido. Válidos: {ESTADOS_VALIDOS}")
+
+    tarea = db.query(Tarea).filter(Tarea.id == tarea_id).first()
+    if not tarea:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+
+    es_supervisor = puede_asignar(current_user)
+    es_responsable = tarea.responsable_ref in (current_user.email, current_user.nombre)
+
+    # Regla de Gil: CANCELLED solo supervisor
+    if data.estado == "CANCELLED" and not es_supervisor:
+        raise HTTPException(status_code=403, detail="Solo un supervisor puede cancelar una tarea")
+
+    # El resto de estados: el responsable de la tarea o un supervisor
+    if not es_responsable and not es_supervisor:
+        raise HTTPException(status_code=403, detail="No tienes permiso para cambiar esta tarea")
+
+    tarea.estado = data.estado
+    if data.estado == "DONE":
+        tarea.fecha_cierre = datetime.now(timezone.utc)
     db.commit()
     db.refresh(tarea)
     return tarea
