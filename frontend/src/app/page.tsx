@@ -127,12 +127,18 @@ export default function Home() {
   const [tramiteSel, setTramiteSel] = useState<string>('');
   const [nodoTitulo, setNodoTitulo] = useState<string>('');
   const [msgGeneradas, setMsgGeneradas] = useState<string>('');
+  const [sinAsignar, setSinAsignar] = useState<any[]>([]);
 
   const puedeAsignar = usuario && ['superadmin', 'notario', 'cfo', 'coordinador', 'abogado'].includes(usuario.rol);
 
   const recargarTareas = async () => {
     const res = await fetch(`${apiBaseUrl}/tareas/mis-tareas?incluir_completadas=true`, { credentials: 'include', cache: 'no-store' });
     if (res.ok) setMisTareas(await res.json());
+  };
+
+  const cargarSinAsignar = async () => {
+    const res = await fetch(`${apiBaseUrl}/tareas/sin-asignar`, { credentials: 'include', cache: 'no-store' });
+    if (res.ok) setSinAsignar(await res.json());
   };
 
   const cargarSubitems = async (tareaId: number) => {
@@ -233,6 +239,8 @@ export default function Home() {
         if (['superadmin', 'notario', 'cfo', 'coordinador', 'abogado'].includes(meData.rol)) {
           const trRes = await fetch(`${apiBaseUrl}/tramites`, { credentials: 'include', cache: 'no-store' });
           if (trRes.ok && active) setTramites(await trRes.json());
+          const saRes = await fetch(`${apiBaseUrl}/tareas/sin-asignar`, { credentials: 'include', cache: 'no-store' });
+          if (saRes.ok && active) setSinAsignar(await saRes.json());
         }
       } catch (err) {
         if (!active) return;
@@ -326,6 +334,7 @@ export default function Home() {
             outline: 'none',
             boxSizing: 'border-box',
           }}
+          maxLength={100}
           placeholder="Buscar personas, casos, tareas o actividad..."
         />
 
@@ -569,6 +578,7 @@ export default function Home() {
                                             setNuevoSubitem(prev => ({ ...prev, [t.id]: '' }));
                                             await cargarSubitems(t.id);
                                           }}
+                                          maxLength={500}
                                           placeholder="Nuevo paso..."
                                           style={{ flex: 1, padding: '4px 8px', borderRadius: '6px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '12px', outline: 'none', fontFamily: "'DM Sans', sans-serif" }}
                                         />
@@ -637,6 +647,7 @@ export default function Home() {
                         <input
                           value={nodoTitulo}
                           onChange={(e) => setNodoTitulo(e.target.value)}
+                          maxLength={255}
                           placeholder="Operación / expediente relacionado"
                           style={{ flex: 2, minWidth: '200px', padding: '0.6rem 0.75rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '13px', outline: 'none', fontFamily: "'DM Sans', sans-serif" }}
                         />
@@ -660,6 +671,7 @@ export default function Home() {
                               setTramiteSel('');
                               setNodoTitulo('');
                               await recargarTareas();
+                              await cargarSinAsignar();
                               setTimeout(() => setMsgGeneradas(''), 4000);
                             }
                           }}
@@ -684,6 +696,70 @@ export default function Home() {
                         <p style={{ fontSize: '12px', color: '#2A7A5A', margin: 0, fontWeight: 600 }}>{msgGeneradas}</p>
                       )}
                     </>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Bandeja — Sin asignar */}
+            {puedeAsignar && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem', marginTop: '2rem' }}>
+                  <p style={{ fontSize: '11px', color: '#4B5563', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+                    Bandeja — Sin asignar ({sinAsignar.length})
+                  </p>
+                </div>
+                <div style={{ backgroundColor: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: '12px', padding: '1.25rem', marginBottom: '2.5rem' }}>
+                  {sinAsignar.length === 0 ? (
+                    <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>No hay tareas sin asignar.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                      {sinAsignar.map((t: any) => (
+                        <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', borderBottom: '1px solid #2A2A2A', paddingBottom: '0.875rem' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: '13px', color: '#F9FAFB', margin: 0, fontWeight: 500 }}>{t.titulo}</p>
+                            <p style={{ fontSize: '11px', color: '#6B7280', margin: '2px 0 0' }}>
+                              {[t.nodo_titulo, t.responsable].filter(Boolean).join(' · ')}
+                            </p>
+                          </div>
+                          <select
+                            defaultValue=""
+                            onChange={async (e) => {
+                              const email = e.target.value;
+                              if (!email) return;
+                              const res = await fetch(`${apiBaseUrl}/tareas/${t.id}/asignar-responsable`, {
+                                method: 'PATCH',
+                                credentials: 'include',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ responsable_ref: email }),
+                              });
+                              if (res.ok) {
+                                await cargarSinAsignar();
+                                await recargarTareas();
+                              }
+                            }}
+                            style={{
+                              padding: '0.45rem 0.65rem',
+                              borderRadius: '8px',
+                              backgroundColor: '#0D0D0D',
+                              border: '1px solid #2A2A2A',
+                              color: '#6B7280',
+                              fontSize: '12px',
+                              outline: 'none',
+                              fontFamily: "'DM Sans', sans-serif",
+                              flexShrink: 0,
+                              minWidth: '180px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="">Asignar a...</option>
+                            {usuarios.map((u) => (
+                              <option key={u.id} value={u.email}>{u.nombre} · {u.email}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               </>
@@ -972,6 +1048,7 @@ export default function Home() {
               <input
                 value={asignarTitulo}
                 onChange={(e) => setAsignarTitulo(e.target.value)}
+                maxLength={255}
                 placeholder="Título de la tarea"
                 style={{ padding: '0.65rem 0.875rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '13px', outline: 'none' }}
               />
@@ -982,10 +1059,12 @@ export default function Home() {
               <textarea
                 value={asignarDesc}
                 onChange={(e) => setAsignarDesc(e.target.value)}
+                maxLength={1000}
                 placeholder="Detalles opcionales..."
                 rows={3}
                 style={{ padding: '0.65rem 0.875rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '13px', outline: 'none', resize: 'vertical', fontFamily: "'DM Sans', sans-serif" }}
               />
+              <p style={{ fontSize: '11px', color: asignarDesc.length > 900 ? '#C8920A' : '#6B7280', textAlign: 'right', marginTop: '4px' }}>{asignarDesc.length}/1000</p>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1007,6 +1086,7 @@ export default function Home() {
               <input
                 value={asignarNodoTitulo}
                 onChange={(e) => setAsignarNodoTitulo(e.target.value)}
+                maxLength={255}
                 placeholder="Caso, expediente, proyecto..."
                 style={{ padding: '0.65rem 0.875rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: '#F9FAFB', fontSize: '13px', outline: 'none' }}
               />
@@ -1098,6 +1178,7 @@ export default function Home() {
               <input
                 value={formTitulo}
                 onChange={(e) => setFormTitulo(e.target.value)}
+                maxLength={255}
                 placeholder="Descripción breve del incidente"
                 style={{
                   padding: '0.65rem 0.875rem',
@@ -1116,6 +1197,7 @@ export default function Home() {
               <textarea
                 value={formDesc}
                 onChange={(e) => setFormDesc(e.target.value)}
+                maxLength={1000}
                 placeholder="Detalles adicionales..."
                 rows={3}
                 style={{
@@ -1130,6 +1212,7 @@ export default function Home() {
                   fontFamily: "'DM Sans', sans-serif",
                 }}
               />
+              <p style={{ fontSize: '11px', color: formDesc.length > 900 ? '#C8920A' : '#6B7280', textAlign: 'right', marginTop: '4px' }}>{formDesc.length}/1000</p>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>

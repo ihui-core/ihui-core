@@ -121,6 +121,21 @@ def mis_tareas(
         query = query.filter(Tarea.estado != "COMPLETADA")
     return query.order_by(Tarea.fecha_creacion.desc()).all()
 
+class AsignarResponsable(BaseModel):
+    responsable_ref: str
+
+@router.get("/sin-asignar", response_model=list[TareaResponse])
+def tareas_sin_asignar(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    if not puede_asignar(current_user):
+        raise HTTPException(status_code=403, detail="No tienes permiso para ver la bandeja de asignación")
+    return db.query(Tarea).filter(
+        Tarea.responsable_ref.is_(None),
+        Tarea.estado.notin_(["DONE", "CANCELLED"])
+    ).order_by(Tarea.fecha_creacion.desc()).all()
+
 @router.get("", response_model=list[TareaResponse])
 def listar_tareas(
     db: Session = Depends(get_db),
@@ -176,6 +191,26 @@ def cambiar_estado(
     tarea.estado = data.estado
     if data.estado == "DONE":
         tarea.fecha_cierre = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(tarea)
+    return tarea
+
+@router.patch("/{tarea_id}/asignar-responsable", response_model=TareaResponse)
+def asignar_responsable(
+    tarea_id: int,
+    data: AsignarResponsable,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    if not puede_asignar(current_user):
+        raise HTTPException(status_code=403, detail="No tienes permiso para asignar tareas")
+    tarea = db.query(Tarea).filter(Tarea.id == tarea_id).first()
+    if not tarea:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+    tarea.responsable = data.responsable_ref
+    tarea.responsable_ref = data.responsable_ref
+    if not tarea.asignado_por:
+        tarea.asignado_por = current_user.email
     db.commit()
     db.refresh(tarea)
     return tarea
