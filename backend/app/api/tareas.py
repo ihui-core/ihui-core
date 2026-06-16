@@ -6,7 +6,7 @@ from typing import Optional
 from datetime import datetime, timezone
 import uuid
 from app.core.database import get_db
-from app.core.permisos import puede_asignar
+from app.core.permisos import puede_asignar, puede_derivar
 from app.core.security import get_current_user
 from app.models.tarea import Tarea
 from app.models.usuario import Usuario
@@ -191,6 +191,7 @@ def cambiar_estado(
     tarea.estado = data.estado
     if data.estado == "DONE":
         tarea.fecha_cierre = datetime.now(timezone.utc)
+        tarea.cerrado_por = current_user.email
     db.commit()
     db.refresh(tarea)
     return tarea
@@ -214,3 +215,52 @@ def asignar_responsable(
     db.commit()
     db.refresh(tarea)
     return tarea
+
+class DerivarTarea(BaseModel):
+    titulo: str
+    descripcion: Optional[str] = None
+    responsable_ref: str
+    prioridad: str = "MEDIA"
+    fecha_vencimiento: Optional[datetime] = None
+
+@router.post("/{tarea_padre_id}/derivar", response_model=TareaResponse)
+def derivar_tarea(
+    tarea_padre_id: int,
+    data: DerivarTarea,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    padre = db.query(Tarea).filter(Tarea.id == tarea_padre_id).first()
+    if not padre:
+        raise HTTPException(status_code=404, detail="Tarea padre no encontrada")
+    if not puede_derivar(current_user, padre):
+        raise HTTPException(status_code=403, detail="No tienes permiso para derivar tareas de esta tarea")
+
+    hija = Tarea(
+        titulo=data.titulo,
+        descripcion=data.descripcion,
+        tarea_padre_id=padre.id,
+        nodo_id=padre.nodo_id,
+        nodo_titulo=padre.nodo_titulo,
+        nodo_tipo=padre.nodo_tipo,
+        responsable=data.responsable_ref,
+        responsable_ref=data.responsable_ref,
+        asignado_por=current_user.email,
+        dueno_ref=padre.dueno_ref or current_user.email,
+        agente="humano",
+        prioridad=data.prioridad,
+        estado="PENDING",
+        fecha_vencimiento=data.fecha_vencimiento,
+    )
+    db.add(hija)
+    db.commit()
+    db.refresh(hija)
+    return hija
+
+@router.get("/{tarea_id}/hijas", response_model=list[TareaResponse])
+def listar_hijas(
+    tarea_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    return db.query(Tarea).filter(Tarea.tarea_padre_id == tarea_id).order_by(Tarea.fecha_creacion).all()

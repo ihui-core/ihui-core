@@ -22,6 +22,9 @@ class Tarea(Base):
     responsable = Column(String(255), nullable=False)
     responsable_ref = Column(String(255), nullable=True)
     asignado_por = Column(String(255), nullable=True)
+    tarea_padre_id = Column(Integer, ForeignKey("tareas.id", ondelete="SET NULL"), nullable=True)
+    dueno_ref = Column(String(255), nullable=True)
+    cerrado_por = Column(String(255), nullable=True)
     agente = Column(String(50), nullable=False)
     prioridad = Column(String(20), nullable=False, default="MEDIA")
     estado = Column(String(20), nullable=False, default="PENDIENTE")
@@ -31,3 +34,4 @@ class Tarea(Base):
     fecha_cierre = Column(DateTime(timezone=True), nullable=True)
 
     caso = relationship("Caso", back_populates="tareas")
+    hijas = relationship("Tarea", backref="padre", remote_side=[id])
