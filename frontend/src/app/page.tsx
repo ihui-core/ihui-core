@@ -263,12 +263,8 @@ export default function Home() {
       backgroundColor: '#141414',
       padding: '2rem',
       fontFamily: "'DM Sans', sans-serif",
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      width: '100%',
     }}>
-      <div style={{ maxWidth: '1400px', width: '100%', flexShrink: 0 }}>
+      <div style={{ maxWidth: '1800px', margin: '0 auto' }}>
 
         {/* Header */}
         <div style={{ marginBottom: '2.5rem' }}>
@@ -704,7 +700,7 @@ export default function Home() {
             </p>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+              gridTemplateColumns: 'repeat(3, 1fr)',
               gap: '1rem',
               marginBottom: '2.5rem',
             }}>
