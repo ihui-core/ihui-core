@@ -128,6 +128,9 @@ export default function Home() {
   const [nodoTitulo, setNodoTitulo] = useState<string>('');
   const [msgGeneradas, setMsgGeneradas] = useState<string>('');
   const [sinAsignar, setSinAsignar] = useState<any[]>([]);
+  const [previewTareas, setPreviewTareas] = useState<any[]>([]);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewExcluidas, setPreviewExcluidas] = useState<Set<number>>(new Set());
 
   const puedeAsignar = usuario && ['superadmin', 'notario', 'cfo', 'coordinador', 'abogado'].includes(usuario.rol);
 
@@ -634,7 +637,12 @@ export default function Home() {
                       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                         <select
                           value={tramiteSel}
-                          onChange={(e) => setTramiteSel(e.target.value)}
+                          onChange={(e) => {
+                            setTramiteSel(e.target.value);
+                            setPreviewVisible(false);
+                            setPreviewTareas([]);
+                            setPreviewExcluidas(new Set());
+                          }}
                           style={{ flex: 1, minWidth: '200px', padding: '0.6rem 0.75rem', borderRadius: '8px', backgroundColor: '#0D0D0D', border: '1px solid #2A2A2A', color: tramiteSel ? '#F9FAFB' : '#6B7280', fontSize: '13px', outline: 'none', fontFamily: "'DM Sans', sans-serif" }}
                         >
                           <option value="">Seleccionar tipo de trámite...</option>
@@ -655,24 +663,15 @@ export default function Home() {
                           disabled={!tramiteSel}
                           onClick={async () => {
                             if (!tramiteSel) return;
-                            const res = await fetch(`${apiBaseUrl}/tramites/generar-tareas`, {
-                              method: 'POST',
+                            const res = await fetch(`${apiBaseUrl}/tramites/${tramiteSel}/preview-tareas`, {
                               credentials: 'include',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                tipo_tramite_id: parseInt(tramiteSel),
-                                nodo_titulo: nodoTitulo || null,
-                                nodo_tipo: 'OPERACION',
-                              }),
+                              cache: 'no-store',
                             });
                             if (res.ok) {
                               const data = await res.json();
-                              setMsgGeneradas(`✓ ${data.tareas_creadas} tareas generadas`);
-                              setTramiteSel('');
-                              setNodoTitulo('');
-                              await recargarTareas();
-                              await cargarSinAsignar();
-                              setTimeout(() => setMsgGeneradas(''), 4000);
+                              setPreviewTareas(data.tareas ?? []);
+                              setPreviewExcluidas(new Set());
+                              setPreviewVisible(true);
                             }
                           }}
                           style={{
@@ -689,9 +688,96 @@ export default function Home() {
                             transition: 'background 0.15s',
                           }}
                         >
-                          Generar tareas
+                          Previsualizar
                         </button>
                       </div>
+
+                      {previewVisible && previewTareas.length > 0 && (
+                        <div style={{ borderTop: '1px solid #2A2A2A', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                          <p style={{ fontSize: '11px', color: '#4B5563', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>
+                            Tareas propuestas
+                          </p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {previewTareas.map((p: any) => {
+                              const excluida = previewExcluidas.has(p.plantilla_id);
+                              return (
+                                <label key={p.plantilla_id} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!excluida}
+                                    onChange={() => {
+                                      setPreviewExcluidas(prev => {
+                                        const next = new Set(prev);
+                                        if (excluida) next.delete(p.plantilla_id);
+                                        else next.add(p.plantilla_id);
+                                        return next;
+                                      });
+                                    }}
+                                    style={{ marginTop: '2px', accentColor: '#2A7A5A', flexShrink: 0 }}
+                                  />
+                                  <div>
+                                    <span style={{ fontSize: '13px', color: excluida ? '#4B5563' : '#F9FAFB', textDecoration: excluida ? 'line-through' : 'none' }}>
+                                      {p.titulo}
+                                    </span>
+                                    {p.rol_sugerido && (
+                                      <span style={{ fontSize: '11px', color: '#6B7280', marginLeft: '6px' }}>· {p.rol_sugerido}</span>
+                                    )}
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                            <button
+                              onClick={() => { setPreviewVisible(false); setPreviewTareas([]); setPreviewExcluidas(new Set()); }}
+                              style={{ padding: '0.5rem 1rem', borderRadius: '8px', backgroundColor: 'transparent', color: '#6B7280', border: '1px solid #2A2A2A', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const res = await fetch(`${apiBaseUrl}/tramites/generar-tareas`, {
+                                  method: 'POST',
+                                  credentials: 'include',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    tipo_tramite_id: Number(tramiteSel),
+                                    nodo_titulo: nodoTitulo || null,
+                                    nodo_tipo: 'OPERACION',
+                                    excluir_plantilla_ids: Array.from(previewExcluidas),
+                                  }),
+                                });
+                                if (res.ok) {
+                                  const incluidas = previewTareas.length - previewExcluidas.size;
+                                  setMsgGeneradas(`✓ ${incluidas} tareas generadas`);
+                                  setPreviewVisible(false);
+                                  setPreviewTareas([]);
+                                  setPreviewExcluidas(new Set());
+                                  setTramiteSel('');
+                                  setNodoTitulo('');
+                                  await recargarTareas();
+                                  await cargarSinAsignar();
+                                  setTimeout(() => setMsgGeneradas(''), 4000);
+                                }
+                              }}
+                              style={{
+                                padding: '0.5rem 1.25rem',
+                                borderRadius: '8px',
+                                backgroundColor: '#2A7A5A',
+                                color: '#fff',
+                                border: 'none',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                fontFamily: "'DM Sans', sans-serif",
+                              }}
+                            >
+                              Confirmar y generar ({previewTareas.length - previewExcluidas.size} tareas)
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {msgGeneradas && (
                         <p style={{ fontSize: '12px', color: '#2A7A5A', margin: 0, fontWeight: 600 }}>{msgGeneradas}</p>
                       )}

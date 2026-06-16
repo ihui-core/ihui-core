@@ -82,6 +82,7 @@ class GenerarTareasRequest(BaseModel):
     nodo_titulo: Optional[str] = None
     nodo_tipo: Optional[str] = None
     responsable_ref: Optional[str] = None  # si se da, todas para esa persona; si no, queda sin asignar
+    excluir_plantilla_ids: list[int] = []
 
 @router.post("/generar-tareas")
 def generar_tareas_desde_plantilla(
@@ -102,6 +103,11 @@ def generar_tareas_desde_plantilla(
 
     if not pasos:
         raise HTTPException(status_code=400, detail="Este trámite no tiene plantilla de tareas")
+
+    if data.excluir_plantilla_ids:
+        pasos = [p for p in pasos if p.id not in data.excluir_plantilla_ids]
+    if not pasos:
+        raise HTTPException(status_code=400, detail="No quedaron tareas por generar (todas excluidas)")
 
     creadas = []
     for paso in pasos:
@@ -127,4 +133,26 @@ def generar_tareas_desde_plantilla(
         "tramite": tramite.nombre,
         "tareas_creadas": len(creadas),
         "detalle": [{"titulo": t.titulo, "rol": p.rol_sugerido} for t, p in zip(creadas, pasos)]
+    }
+
+@router.get("/{tipo_tramite_id}/preview-tareas")
+def preview_tareas(
+    tipo_tramite_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    if not puede_asignar(current_user):
+        raise HTTPException(status_code=403, detail="No tienes permiso")
+    tramite = db.query(TipoTramite).filter(TipoTramite.id == tipo_tramite_id).first()
+    if not tramite:
+        raise HTTPException(status_code=404, detail="Tipo de trámite no encontrado")
+    pasos = db.query(PlantillaTarea).filter(
+        PlantillaTarea.tipo_tramite_id == tipo_tramite_id
+    ).order_by(PlantillaTarea.orden).all()
+    return {
+        "tramite": tramite.nombre,
+        "tareas": [
+            {"plantilla_id": p.id, "titulo": p.titulo, "rol_sugerido": p.rol_sugerido, "orden": p.orden}
+            for p in pasos
+        ]
     }
