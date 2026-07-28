@@ -1,4 +1,143 @@
-{
-  "sessions": [],
-  "invalid_sessions": []
-}
+[
+  {
+    "schema_version": "1.0",
+    "session_id": "00000000-0000-4000-8000-000000000000",
+    "agent_id": "test",
+    "repo": "ihui-core",
+    "branch": "main",
+    "task_ref": "test#falsacion",
+    "started_at": "2026-07-01T00:00:00-05:00",
+    "ended_at": "2026-07-28T23:59:00-05:00",
+    "summary": "Falsacion: reclama archivo inexistente con alcance real.",
+    "outcome": "COMPLETADO",
+    "claims": {
+      "files_modified": [
+        "app/services/archivo_que_no_existe.py"
+      ],
+      "adrs_touched": [
+        "ADR-999"
+      ],
+      "prs": [
+        {
+          "number": 999999
+        }
+      ]
+    },
+    "verification": {
+      "status": "DISCREPANCIA",
+      "checked_at": "2026-07-28T18:04:19Z",
+      "details": {
+        "files": [
+          {
+            "file": "app/services/archivo_que_no_existe.py",
+            "status": "NO_ENCONTRADO"
+          },
+          {
+            "file": "docengine/dashboard/public/data/adrs.json",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/public/data/git_activity.json",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/src/app/layout.tsx",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/postcss.config.mjs",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/src/components/ClaimsViewer.tsx",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/public/data/sessions.json",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/README.md",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/schema_session_v1.json",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/next.config.mjs",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/src/app/page.tsx",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/src/app/git/page.tsx",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/tsconfig.json",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/src/app/globals.css",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/src/types/docengine.ts",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/generate.py",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/tailwind.config.ts",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/package.json",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/public/data/docs.json",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/src/app/docs/page.tsx",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/src/components/Navbar.tsx",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/src/app/adrs/page.tsx",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": "docengine/dashboard/src/components/StatusBadge.tsx",
+            "status": "DISCREPANCIA"
+          },
+          {
+            "file": ".github/workflows/docengine.yml",
+            "status": "DISCREPANCIA"
+          }
+        ],
+        "adrs": [
+          {
+            "adr": "ADR-999",
+            "status": "NO_ENCONTRADO"
+          }
+        ],
+        "prs": [
+          {
+            "number": 999999,
+            "status": "NO_VERIFICABLE"
+          }
+        ]
+      }
+    }
+  }
+]

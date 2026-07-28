@@ -13,32 +13,69 @@
     "ended_at",
     "summary",
     "outcome",
-    "claims",
-    "verification"
+    "claims"
   ],
   "properties": {
-    "schema_version": { "type": "string", "enum": ["1.0"] },
-    "session_id": { "type": "string", "format": "uuid" },
-    "agent_id": { "type": "string", "minLength": 1 },
-    "repo": { "type": "string", "minLength": 1 },
-    "branch": { "type": "string", "minLength": 1 },
-    "task_ref": { "type": "string", "minLength": 1 },
-    "started_at": { "type": "string", "format": "date-time" },
-    "ended_at": { "type": "string", "format": "date-time" },
-    "summary": { "type": "string", "minLength": 1 },
-    "outcome": { "type": "string", "enum": ["COMPLETADO", "BLOQUEADO", "PARCIAL"] },
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0"]
+    },
+    "session_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repo": {
+      "type": "string",
+      "minLength": 1
+    },
+    "branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["COMPLETADO", "BLOQUEADO", "PARCIAL"]
+    },
     "claims": {
       "type": "object",
       "required": ["files_modified", "adrs_touched", "prs"],
       "properties": {
-        "files_modified": { "type": "array", "items": { "type": "string" } },
-        "adrs_touched": { "type": "array", "items": { "type": "string" } },
+        "files_modified": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "adrs_touched": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "prs": {
           "type": "array",
           "items": {
             "type": "object",
             "required": ["number"],
-            "properties": { "number": { "type": "integer" } },
+            "properties": {
+              "number": { "type": "integer" }
+            },
             "additionalProperties": false
           }
         }
@@ -46,19 +83,55 @@
       "additionalProperties": false
     },
     "verification": {
-      "type": ["object", "null"],
+      "type": "object",
+      "required": ["status", "checked_at", "details"],
       "properties": {
-        "status": { "type": "string", "enum": ["VERIFICADO", "NO_ENCONTRADO", "DISCREPANCIA"] },
-        "checked_at": { "type": "string", "format": "date-time" },
+        "status": {
+          "type": "string",
+          "enum": ["VERIFICADO", "NO_ENCONTRADO", "DISCREPANCIA", "NO_VERIFICABLE"]
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
         "details": {
           "type": "object",
+          "required": ["files", "adrs", "prs"],
           "properties": {
-            "files": { "type": "array", "items": { "type": "object", "properties": { "file": { "type": "string" }, "status": { "type": "string", "enum": ["VERIFICADO", "NO_ENCONTRADO"] } } } },
-            "adrs": { "type": "array", "items": { "type": "object", "properties": { "adr": { "type": "string" }, "status": { "type": "string", "enum": ["VERIFICADO", "NO_ENCONTRADO"] } } } },
-            "prs": { "type": "array", "items": { "type": "object", "properties": { "number": { "type": "integer" }, "status": { "type": "string", "enum": ["VERIFICADO", "NO_ENCONTRADO"] } } } }
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "file": { "type": "string" },
+                  "status": { "type": "string", "enum": ["VERIFICADO", "NO_ENCONTRADO", "DISCREPANCIA", "NO_VERIFICABLE"] }
+                }
+              }
+            },
+            "adrs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "adr": { "type": "string" },
+                  "status": { "type": "string", "enum": ["VERIFICADO", "NO_ENCONTRADO", "NO_VERIFICABLE"] }
+                }
+              }
+            },
+            "prs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "number": { "type": "integer" },
+                  "status": { "type": "string", "enum": ["VERIFICADO", "NO_ENCONTRADO", "NO_VERIFICABLE"] }
+                }
+              }
+            }
           }
         }
-      }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

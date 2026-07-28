@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "session_id": "00000000-0000-4000-8000-000000000000",
+  "agent_id": "test",
+  "repo": "ihui-core",
+  "branch": "main",
+  "task_ref": "test#falsacion",
+  "started_at": "2026-07-01T00:00:00-05:00",
+  "ended_at": "2026-07-28T23:59:00-05:00",
+  "summary": "Falsacion: reclama archivo inexistente con alcance real.",
+  "outcome": "COMPLETADO",
+  "claims": {
+    "files_modified": ["app/services/archivo_que_no_existe.py"],
+    "adrs_touched": ["ADR-999"],
+    "prs": [{"number": 999999}]
+  },
+  "verification": {"status": "VERIFICADO", "checked_at": "2026-07-28T12:00:00Z", "details": {"files": [], "adrs": [], "prs": []}}
+}

@@ -1,228 +1,313 @@
+#!/usr/bin/env python3
 import os
-import sys
 import json
 import re
+import subprocess
+from datetime import datetime
 from pathlib import Path
-from datetime import datetime, timezone
-import requests
 import jsonschema
+import markdown
 
-REPO_NAME = os.getenv("GITHUB_REPOSITORY", "ihui-core/ihui-core")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-BASE_DIR = Path(__file__).resolve().parent.parent
-SESSIONS_DIR = BASE_DIR / ".sessions"
-PROJECTBRAIN_DIR = BASE_DIR / "PROJECTBRAIN"
-SCHEMA_PATH = BASE_DIR / "docengine" / "schema_session_v1.json"
-OUTPUT_DIR = BASE_DIR / "docengine" / "dashboard" / "public" / "data"
+ROOT = Path(__file__).resolve().parent.parent
+SESSIONS_DIR = ROOT / ".sessions"
+SCHEMA_PATH = ROOT / "docengine" / "schema_session_v1.json"
+OUT_DIR = ROOT / "docengine" / "dashboard" / "public" / "data"
+PROJECTBRAIN_DIR = ROOT / "PROJECTBRAIN"
+ADRS_MASTER_PATH = PROJECTBRAIN_DIR / "ADRS.md"
 
-HEADERS = {
-    "Accept": "application/vnd.github.v3+json",
-    "User-Agent": "ihui-Core-Doc-Engine"
-}
-if GITHUB_TOKEN:
-    HEADERS["Authorization"] = f"token {GITHUB_TOKEN}"
+def get_git_commits_in_range(branch, started_at, ended_at):
+    cmd = ["git", "log", branch, "--name-only", "--pretty=format:COMMIT:%H|%an|%ae|%at|%s"]
+    if branch != "main":
+        res_diff = subprocess.run(["git", "rev-parse", "--verify", "origin/main"], cwd=ROOT, capture_output=True, text=True)
+        if res_diff.returncode == 0:
+            cmd = ["git", "log", f"origin/main..{branch}", "--name-only", "--pretty=format:COMMIT:%H|%an|%ae|%at|%s"]
+        else:
+            print("[FALTA origin/main] No se pudo verificar origin/main localmente para acotar el rango.")
+            return [], set(), "NO_VERIFICABLE"
 
-def fetch_github_api(endpoint: str):
-    url = f"https://api.github.com/repos/{REPO_NAME}/{endpoint}"
+    res = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"[FALTA origin/main] Error ejecutando git log para la rama {branch}.")
+        return [], set(), "NO_VERIFICABLE"
+
     try:
-        res = requests.get(url, headers=HEADERS, timeout=15)
-        if res.status_code == 200:
-            return res.json()
-        print(f"[WARN] GitHub API {endpoint} retornó HTTP {res.status_code}", file=sys.stderr)
-        return None
-    except Exception as e:
-        print(f"[ERROR] Error al conectar con GitHub API ({endpoint}): {e}", file=sys.stderr)
-        return None
+        start_dt = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
+    except Exception:
+        return [], set(), "VERIFICADO"
 
-def load_schema():
-    if not SCHEMA_PATH.exists():
-        print(f"[ERROR] Esquema no encontrado en {SCHEMA_PATH}", file=sys.stderr)
-        sys.exit(1)
-    with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    commits_data = []
+    touched_files = set()
+    current_commit = None
 
-def process_sessions(schema, github_data):
-    sessions = []
-    invalid_sessions = []
-    if not SESSIONS_DIR.exists():
-        return [], []
-    for file_path in SESSIONS_DIR.glob("*.json"):
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = json.load(f)
-            jsonschema.validate(instance=content, schema=schema)
-            content["verification"] = verify_claims(content, github_data)
-            sessions.append(content)
-        except jsonschema.ValidationError as err:
-            invalid_sessions.append({"file_name": file_path.name, "error": f"Error de Esquema: {err.message}", "raw_content": None})
-        except Exception as err:
-            invalid_sessions.append({"file_name": file_path.name, "error": f"Error: {str(err)}", "raw_content": None})
-    sessions.sort(key=lambda x: x.get("started_at", ""), reverse=True)
-    return sessions, invalid_sessions
+    for line in res.stdout.splitlines():
+        if line.startswith("COMMIT:"):
+            parts = line.replace("COMMIT:", "").split("|")
+            if len(parts) == 5:
+                commit_hash, author, email, timestamp, subject = parts
+                commit_dt = datetime.fromtimestamp(int(timestamp), tz=start_dt.tzinfo)
+                if start_dt <= commit_dt <= end_dt:
+                    current_commit = {
+                        "hash": commit_hash,
+                        "author": author,
+                        "email": email,
+                        "subject": subject
+                    }
+                    commits_data.append(current_commit)
+                else:
+                    current_commit = None
+        elif current_commit and line.strip():
+            touched_files.add(line.strip())
 
-def verify_claims(session, github_data):
-    claims = session.get("claims", {})
-    branch_name = session.get("branch", "")
-    files_claimed = claims.get("files_modified", [])
-    adrs_claimed = claims.get("adrs_touched", [])
-    prs_claimed = claims.get("prs", [])
+    return commits_data, touched_files, "VERIFICADO"
 
-    branch_commits = github_data.get("branch_commits", {}).get(branch_name, [])
-    branch_files = set()
-    for c in branch_commits:
-        branch_files.update(c.get("files", []))
+def evaluate_status_priority(statuses):
+    if "DISCREPANCIA" in statuses:
+        return "DISCREPANCIA"
+    if "NO_ENCONTRADO" in statuses:
+        return "NO_ENCONTRADO"
+    if "NO_VERIFICABLE" in statuses:
+        return "NO_VERIFICABLE"
+    return "VERIFICADO"
 
-    files_verification = []
-    files_ok = True
-    for f in files_claimed:
-        found = f in branch_files
-        files_verification.append({"file": f, "status": "VERIFICADO" if found else "NO_ENCONTRADO"})
-        if not found: files_ok = False
-
-    real_prs = {pr["number"]: pr for pr in github_data.get("prs", [])}
-    prs_verification = []
-    prs_ok = True
-    for pr in prs_claimed:
-        pr_num = pr.get("number")
-        found = pr_num in real_prs
-        prs_verification.append({"number": pr_num, "status": "VERIFICADO" if found else "NO_ENCONTRADO"})
-        if not found: prs_ok = False
-
-    commits_main = github_data.get("main_commits", [])
-    adrs_verification = []
-    adrs_ok = True
-    for adr_id in adrs_claimed:
-        adr_num_match = re.search(r'\d+', adr_id)
-        found = False
-        if adr_num_match:
-            num = adr_num_match.group(0).zfill(3)
-            pattern_trailer = f"ADR: {num}"
-            pattern_literal = f"ADR-{num}"
-            for commit in commits_main + branch_commits:
-                msg = commit.get("message", "")
-                if pattern_trailer in msg or pattern_literal in msg:
-                    found = True
-                    break
-        adrs_verification.append({"adr": adr_id, "status": "VERIFICADO" if found else "NO_ENCONTRADO"})
-        if not found: adrs_ok = False
-
-    if files_ok and prs_ok and adrs_ok:
-        status = "VERIFICADO"
-    elif not files_ok or not prs_ok or not adrs_ok:
-        status = "DISCREPANCIA"
-    else:
-        status = "NO_ENCONTRADO"
-
-    return {
-        "status": status,
-        "checked_at": datetime.now(timezone.utc).isoformat(),
-        "details": {"files": files_verification, "adrs": adrs_verification, "prs": prs_verification}
-    }
-
-def process_adrs(commits_main):
+def parse_adrs_master():
     adrs = []
-    adr_file = PROJECTBRAIN_DIR / "ADRS.md"
-    if not adr_file.exists():
-        found_adrs = list(PROJECTBRAIN_DIR.glob("**/*ADR*.md"))
-        if found_adrs: adr_file = found_adrs[0]
-    if not adr_file.exists(): return adrs
-
-    content = adr_file.read_text(encoding="utf-8")
-    adr_blocks = re.split(r'(?=^##\s+ADR-\d+)', content, flags=re.MULTILINE)
-
-    for block in adr_blocks:
-        match_title = re.search(r'^##\s+ADR-(\d+)\s+[\u2014\-–]\s+(.+)$', block, re.MULTILINE)
-        if not match_title: continue
-        num_str = match_title.group(1).zfill(3)
-        title = match_title.group(2).strip()
-        adr_id = f"ADR-{num_str}"
-        status_match = re.search(r'^\*\*Estado\*\*:\s*(.+)$', block, re.MULTILINE | re.IGNORECASE)
-        declared_status = status_match.group(1).strip() if status_match else "Desconocido"
-        
-        pattern_trailer = f"ADR: {num_str}"
-        pattern_literal = f"ADR-{num_str}"
-        linked_commits = []
-        for commit in commits_main:
-            msg = commit.get("message", "")
-            if pattern_trailer in msg or pattern_literal in msg:
-                linked_commits.append({"sha": commit.get("sha", "")[:7], "message": msg.split("\n")[0], "url": commit.get("url", "")})
-
-        auto_status = declared_status
-        warning = None
-        if declared_status in ["Propuesto", "Aceptado"] and len(linked_commits) > 0:
-            auto_status = "Implementado (auto-detectado)"
-        elif declared_status == "Implementado" and len(linked_commits) == 0:
-            warning = "DECLARADO IMPLEMENTADO SIN COMMITS VINCULADOS EN MAIN"
-
-        adrs.append({"id": adr_id, "number": num_str, "title": title, "declared_status": declared_status, "auto_status": auto_status, "evidence_commits": linked_commits, "warning": warning})
+    if not ADRS_MASTER_PATH.exists():
+        return adrs
+    
+    content = ADRS_MASTER_PATH.read_text(encoding="utf-8")
+    sections = re.split(r'(?m)^##\s+', content)
+    
+    for sec in sections:
+        if not sec.strip():
+            continue
+        lines = sec.splitlines()
+        header = lines[0]
+        match = re.search(r'(ADR-\d+)\s*[—–-]\s*(.+)', header)
+        if match:
+            adr_id = match.group(1)
+            title = match.group(2).strip()
+            body = "\n".join(lines[1:])
+            
+            status_match = re.search(r'(?i)estado:\s*([^\n]+)', body)
+            declared_status = status_match.group(1).strip() if status_match else "DESCONOCIDO"
+            
+            adrs.append({
+                "id": adr_id,
+                "title": title,
+                "declared_status": declared_status,
+                "body": body
+            })
     return adrs
 
-def process_docs(commits_main):
-    docs = []
-    if not PROJECTBRAIN_DIR.exists(): return docs
-    now = datetime.now(timezone.utc)
-    for file_path in PROJECTBRAIN_DIR.glob("**/*.md"):
-        rel_path = str(file_path.relative_to(BASE_DIR))
-        last_commit_date = None
-        for commit in commits_main:
-            if rel_path in commit.get("files", []):
-                last_commit_date = commit.get("date")
-                break
-        is_stale = False
-        days_old = None
-        if last_commit_date:
-            try:
-                dt = datetime.fromisoformat(last_commit_date.replace("Z", "+00:00"))
-                days_old = (now - dt).days
-                if days_old > 14: is_stale = True
-            except Exception: pass
-        docs.append({"path": rel_path, "title": file_path.stem.replace("_", " ").title(), "last_commit_date": last_commit_date or "[FALTA FECHA_COMMIT]", "days_old": days_old if days_old is not None else "[FALTA DIAS]", "is_stale": is_stale})
-    return docs
-
-def fetch_github_data():
-    data = {"main_commits": [], "prs": [], "active_branches": [], "branch_commits": {}}
-    raw_commits = fetch_github_api("commits?sha=main&per_page=50")
-    if raw_commits and isinstance(raw_commits, list):
-        for c in raw_commits:
-            commit_detail = fetch_github_api(f"commits/{c['sha']}") or c
-            files = [f["filename"] for f in commit_detail.get("files", [])]
-            data["main_commits"].append({"sha": c["sha"], "message": c["commit"]["message"], "author": c["commit"]["author"]["name"], "date": c["commit"]["author"]["date"], "url": c.get("html_url", ""), "files": files})
-    
-    raw_prs = fetch_github_api("pulls?state=all&per_page=30")
-    if raw_prs and isinstance(raw_prs, list):
-        for pr in raw_prs:
-            data["prs"].append({"number": pr["number"], "title": pr["title"], "state": pr["state"], "user": pr["user"]["login"], "created_at": pr["created_at"], "merged_at": pr.get("merged_at"), "url": pr["html_url"]})
-            
-    raw_branches = fetch_github_api("branches?per_page=30")
-    if raw_branches and isinstance(raw_branches, list):
-        for b in raw_branches:
-            b_name = b["name"]
-            data["active_branches"].append({"name": b_name, "sha": b["commit"]["sha"]})
-            b_commits = fetch_github_api(f"commits?sha={b_name}&per_page=10")
-            if b_commits and isinstance(b_commits, list):
-                parsed_b_commits = []
-                for bc in b_commits:
-                    detail = fetch_github_api(f"commits/{bc['sha']}") or bc
-                    parsed_b_commits.append({"sha": bc["sha"], "message": bc["commit"]["message"], "files": [f["filename"] for f in detail.get("files", [])]})
-                data["branch_commits"][b_name] = parsed_b_commits
-    return data
-
 def main():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    schema = load_schema()
-    github_data = fetch_github_data()
-    sessions, invalid_sessions = process_sessions(schema, github_data)
-    adrs = process_adrs(github_data["main_commits"])
-    docs = process_docs(github_data["main_commits"])
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    
+    if not SCHEMA_PATH.exists():
+        print(f"[ERROR] No se encontró el esquema en {SCHEMA_PATH}")
+        exit(1)
+        
+    with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
+        schema = json.load(f)
 
-    with open(OUTPUT_DIR / "sessions.json", "w", encoding="utf-8") as f:
-        json.dump({"sessions": sessions, "invalid_sessions": invalid_sessions}, f, indent=2)
-    with open(OUTPUT_DIR / "adrs.json", "w", encoding="utf-8") as f:
-        json.dump({"adrs": adrs}, f, indent=2)
-    with open(OUTPUT_DIR / "git_activity.json", "w", encoding="utf-8") as f:
-        json.dump({"main_commits": github_data["main_commits"], "prs": github_data["prs"], "active_branches": github_data["active_branches"]}, f, indent=2)
-    with open(OUTPUT_DIR / "docs.json", "w", encoding="utf-8") as f:
-        json.dump({"docs": docs}, f, indent=2)
+    sessions = []
+    invalid_count = 0
+    c_verificado = 0
+    c_no_encontrado = 0
+    c_discrepancia = 0
+    c_no_verificable = 0
+    
+    git_all_log = subprocess.run(["git", "log", "--all", "--pretty=format:COMMIT:%H|%s"], cwd=ROOT, capture_output=True, text=True)
+    all_git_commits = []
+    if git_all_log.returncode == 0:
+        for line in git_all_log.stdout.splitlines():
+            if line.startswith("COMMIT:"):
+                parts = line.replace("COMMIT:", "").split("|", 1)
+                if len(parts) == 2:
+                    all_git_commits.append({"hash": parts[0], "subject": parts[1]})
+
+    if SESSIONS_DIR.exists():
+        for session_file in sorted(SESSIONS_DIR.glob("*.json")):
+            try:
+                with open(session_file, "r", encoding="utf-8") as sf:
+                    data = json.load(sf)
+                
+                data.pop("verification", None)
+                jsonschema.validate(instance=data, schema=schema)
+                
+                branch = data.get("branch", "main")
+                started_at = data.get("started_at")
+                ended_at = data.get("ended_at")
+                claims = data.get("claims", {})
+                claimed_files = set(claims.get("files_modified", []))
+                claimed_adrs = claims.get("adrs_touched", [])
+                claimed_prs = claims.get("prs", [])
+
+                commits_data, scope_touched_files, range_status = get_git_commits_in_range(branch, started_at, ended_at)
+
+                file_details = []
+                file_statuses = []
+
+                if range_status == "NO_VERIFICABLE":
+                    for f in claimed_files:
+                        file_details.append({"file": f, "status": "NO_VERIFICABLE"})
+                        file_statuses.append("NO_VERIFICABLE")
+                elif not commits_data and not scope_touched_files:
+                    for f in claimed_files:
+                        file_details.append({"file": f, "status": "NO_ENCONTRADO"})
+                        file_statuses.append("NO_ENCONTRADO")
+                else:
+                    session_emails = {c["email"] for c in commits_data}
+                    
+                    for f in claimed_files:
+                        touched = False
+                        for c in commits_data:
+                            c_files = subprocess.run(["git", "show", "--name-only", "--pretty=", c["hash"]], cwd=ROOT, capture_output=True, text=True).stdout.splitlines()
+                            if f in [cf.strip() for cf in c_files if cf.strip()]:
+                                touched = True
+                                break
+                        if touched:
+                            file_details.append({"file": f, "status": "VERIFICADO"})
+                            file_statuses.append("VERIFICADO")
+                        else:
+                            file_details.append({"file": f, "status": "NO_ENCONTRADO"})
+                            file_statuses.append("NO_ENCONTRADO")
+
+                    author_scoped_touched = set()
+                    for c in commits_data:
+                        c_files = subprocess.run(["git", "show", "--name-only", "--pretty=", c["hash"]], cwd=ROOT, capture_output=True, text=True).stdout.splitlines()
+                        for cf in c_files:
+                            if cf.strip():
+                                author_scoped_touched.add(cf.strip())
+
+                    undeclared_files = author_scoped_touched - claimed_files
+                    if len(session_emails) == 1:
+                        for uf in undeclared_files:
+                            file_details.append({"file": uf, "status": "DISCREPANCIA"})
+                            file_statuses.append("DISCREPANCIA")
+                    else:
+                        for uf in undeclared_files:
+                            file_details.append({"file": uf, "status": "NO_VERIFICABLE"})
+                            file_statuses.append("NO_VERIFICABLE")
+
+                adr_details = []
+                adr_statuses = []
+
+                for adr_str in claimed_adrs:
+                    adr_num = re.search(r'\d+', adr_str)
+                    if not adr_num:
+                        adr_details.append({"adr": adr_str, "status": "NO_ENCONTRADO"})
+                        adr_statuses.append("NO_ENCONTRADO")
+                        continue
+                    
+                    num_clean = adr_num.group(0).zfill(3)
+                    trailer_pattern = f"ADR: {num_clean}"
+                    literal_pattern = f"ADR-{num_clean}"
+
+                    found_hashes = []
+                    for gc in all_git_commits:
+                        if trailer_pattern in gc["subject"] or literal_pattern in gc["subject"]:
+                            found_hashes.append(gc["hash"])
+
+                    if found_hashes:
+                        adr_details.append({"adr": adr_str, "status": "VERIFICADO"})
+                        adr_statuses.append("VERIFICADO")
+                    else:
+                        adr_details.append({"adr": adr_str, "status": "NO_ENCONTRADO"})
+                        adr_statuses.append("NO_ENCONTRADO")
+
+                pr_details = []
+                pr_statuses = []
+                for pr in claimed_prs:
+                    pr_number = pr.get("number")
+                    pr_details.append({"number": pr_number, "status": "NO_VERIFICABLE"})
+                    pr_statuses.append("NO_VERIFICABLE")
+
+                all_statuses = file_statuses + adr_statuses + pr_statuses
+                aggregate_status = evaluate_status_priority(all_statuses) if all_statuses else "NO_ENCONTRADO"
+
+                if aggregate_status == "VERIFICADO":
+                    c_verificado += 1
+                elif aggregate_status == "NO_ENCONTRADO":
+                    c_no_encontrado += 1
+                elif aggregate_status == "DISCREPANCIA":
+                    c_discrepancia += 1
+                elif aggregate_status == "NO_VERIFICABLE":
+                    c_no_verificable += 1
+
+                data["verification"] = {
+                    "status": aggregate_status,
+                    "checked_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "details": {
+                        "files": file_details,
+                        "adrs": adr_details,
+                        "prs": pr_details
+                    }
+                }
+
+                sessions.append(data)
+            except Exception as err:
+                invalid_count += 1
+                print(f"[FALTA VALIDACIÓN ESQUEMA] Inválido: {session_file.name} -> {err}")
+
+    with open(OUT_DIR / "sessions.json", "w", encoding="utf-8") as f:
+        json.dump(sessions, f, indent=2, ensure_ascii=False)
+
+    adrs_master_list = parse_adrs_master()
+    adrs_output = []
+    for item in adrs_master_list:
+        adr_id = item["id"]
+        num_clean = re.search(r'\d+', adr_id).group(0).zfill(3)
+        trailer_pattern = f"ADR: {num_clean}"
+        literal_pattern = f"ADR-{num_clean}"
+
+        evidence_hashes = []
+        for gc in all_git_commits:
+            if trailer_pattern in gc["subject"] or literal_pattern in gc["subject"]:
+                evidence_hashes.append(gc["hash"])
+
+        auto_status = "VERIFICADO" if evidence_hashes else "NO_ENCONTRADO"
+
+        adrs_output.append({
+            "numero": adr_id,
+            "titulo": item["title"],
+            "estado_declarado": item["declared_status"],
+            "estado_autodetectado": auto_status,
+            "commits_vinculados": evidence_hashes
+        })
+
+    with open(OUT_DIR / "adrs.json", "w", encoding="utf-8") as f:
+        json.dump(adrs_output, f, indent=2, ensure_ascii=False)
+
+    docs_output = []
+    if PROJECTBRAIN_DIR.exists():
+        for md_file in sorted(PROJECTBRAIN_DIR.glob("**/*.md")):
+            try:
+                content = md_file.read_text(encoding="utf-8")
+                html_content = markdown.markdown(content, extensions=['fenced_code', 'tables'])
+                docs_output.append({
+                    "path": str(md_file.relative_to(ROOT)),
+                    "title": md_file.stem,
+                    "html": html_content
+                })
+            except Exception as e:
+                print(f"[WARN] No se pudo procesar {md_file.name}: {e}")
+
+    with open(OUT_DIR / "docs.json", "w", encoding="utf-8") as f:
+        json.dump(docs_output, f, indent=2, ensure_ascii=False)
+
+    git_log = subprocess.run(["git", "log", "-n", "10", "--pretty=format:%h|%an|%s|%ad"], cwd=ROOT, capture_output=True, text=True)
+    git_activity = []
+    if git_log.returncode == 0:
+        for line in git_log.stdout.splitlines():
+            parts = line.split("|")
+            if len(parts) == 4:
+                git_activity.append({"hash": parts[0], "author": parts[1], "subject": parts[2], "date": parts[3]})
+
+    with open(OUT_DIR / "git_activity.json", "w", encoding="utf-8") as f:
+        json.dump(git_activity, f, indent=2, ensure_ascii=False)
+
+    print(f"VERIFICADO: {c_verificado} | NO_ENCONTRADO: {c_no_encontrado} | DISCREPANCIA: {c_discrepancia} | NO_VERIFICABLE: {c_no_verificable} | Invalidos Esquema: {invalid_count}")
 
 if __name__ == "__main__":
     main()
