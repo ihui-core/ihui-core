@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentSessionV1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "session_id",
+    "agent_id",
+    "repo",
+    "branch",
+    "task_ref",
+    "started_at",
+    "ended_at",
+    "summary",
+    "outcome",
+    "claims",
+    "verification"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "enum": ["1.0"] },
+    "session_id": { "type": "string", "format": "uuid" },
+    "agent_id": { "type": "string", "minLength": 1 },
+    "repo": { "type": "string", "minLength": 1 },
+    "branch": { "type": "string", "minLength": 1 },
+    "task_ref": { "type": "string", "minLength": 1 },
+    "started_at": { "type": "string", "format": "date-time" },
+    "ended_at": { "type": "string", "format": "date-time" },
+    "summary": { "type": "string", "minLength": 1 },
+    "outcome": { "type": "string", "enum": ["COMPLETADO", "BLOQUEADO", "PARCIAL"] },
+    "claims": {
+      "type": "object",
+      "required": ["files_modified", "adrs_touched", "prs"],
+      "properties": {
+        "files_modified": { "type": "array", "items": { "type": "string" } },
+        "adrs_touched": { "type": "array", "items": { "type": "string" } },
+        "prs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["number"],
+            "properties": { "number": { "type": "integer" } },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": ["object", "null"],
+      "properties": {
+        "status": { "type": "string", "enum": ["VERIFICADO", "NO_ENCONTRADO", "DISCREPANCIA"] },
+        "checked_at": { "type": "string", "format": "date-time" },
+        "details": {
+          "type": "object",
+          "properties": {
+            "files": { "type": "array", "items": { "type": "object", "properties": { "file": { "type": "string" }, "status": { "type": "string", "enum": ["VERIFICADO", "NO_ENCONTRADO"] } } } },
+            "adrs": { "type": "array", "items": { "type": "object", "properties": { "adr": { "type": "string" }, "status": { "type": "string", "enum": ["VERIFICADO", "NO_ENCONTRADO"] } } } },
+            "prs": { "type": "array", "items": { "type": "object", "properties": { "number": { "type": "integer" }, "status": { "type": "string", "enum": ["VERIFICADO", "NO_ENCONTRADO"] } } } }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

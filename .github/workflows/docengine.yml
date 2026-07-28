@@ -1,0 +1,60 @@
+name: Core-Doc-Engine Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests jsonschema
+
+      - name: Execute DocEngine Static Generator
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python docengine/generate.py
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'docengine/dashboard/package-lock.json'
+
+      - name: Install Node Dependencies & Build Dashboard
+        run: |
+          cd docengine/dashboard
+          npm ci
+          npm run build
+
+      - name: Upload Static Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docengine-static-build
+          path: docengine/dashboard/out/
