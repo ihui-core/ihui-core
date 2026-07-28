@@ -13,6 +13,11 @@ SESSIONS_DIR = ROOT / ".sessions"
 SCHEMA_PATH = ROOT / "docengine" / "schema_session_v1.json"
 OUT_DIR = ROOT / "docengine" / "dashboard" / "public" / "data"
 PROJECTBRAIN_DIR = Path(os.environ.get("DOCENGINE_PROJECTBRAIN", str(ROOT / "PROJECTBRAIN")))
+# Separadores ASCII para trocear la salida de git log: no aparecen en mensajes de commit.
+RECORD_SEP = "\x1e"
+FIELD_SEP = "\x1f"
+# Un trailer (ADR: NNN) vive en el body, no en el subject: por eso se pide %B (mensaje completo).
+GIT_LOG_FORMAT = f"--pretty=format:%H{FIELD_SEP}%s{FIELD_SEP}%B{RECORD_SEP}"
 ADRS_MASTER_PATH = PROJECTBRAIN_DIR / os.environ.get("DOCENGINE_ADRS_FILE", "02_maestrodecisionesarquitectonicas.md")
 
 def get_git_commits_in_range(branch, started_at, ended_at):
@@ -69,6 +74,25 @@ def evaluate_status_priority(statuses):
     if "NO_VERIFICABLE" in statuses:
         return "NO_VERIFICABLE"
     return "VERIFICADO"
+
+def parse_git_log_records(stdout):
+    """Trocea la salida de git log con GIT_LOG_FORMAT.
+
+    El body puede contener saltos de linea, asi que se parte por RECORD_SEP y no por lineas.
+    Devuelve dicts con hash, subject y message (mensaje completo: subject + body).
+    """
+    commits = []
+    for record in stdout.split(RECORD_SEP):
+        record = record.strip("\n")
+        if not record.strip():
+            continue
+        parts = record.split(FIELD_SEP)
+        if len(parts) != 3:
+            print(f"[FALTA MENSAJE COMMIT] Registro ilegible, se omite: {record[:60]!r}")
+            continue
+        commit_hash, subject, message = parts
+        commits.append({"hash": commit_hash, "subject": subject, "message": message})
+    return commits
 
 def parse_adrs_master():
     adrs = []
@@ -127,14 +151,15 @@ def main():
     c_discrepancia = 0
     c_no_verificable = 0
     
-    git_all_log = subprocess.run(["git", "log", "--all", "--pretty=format:COMMIT:%H|%s"], cwd=ROOT, capture_output=True, text=True)
-    all_git_commits = []
-    if git_all_log.returncode == 0:
-        for line in git_all_log.stdout.splitlines():
-            if line.startswith("COMMIT:"):
-                parts = line.replace("COMMIT:", "").split("|", 1)
-                if len(parts) == 2:
-                    all_git_commits.append({"hash": parts[0], "subject": parts[1]})
+    git_all_log = subprocess.run(
+        ["git", "log", "--all", GIT_LOG_FORMAT],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if git_all_log.returncode != 0:
+        print("[FALTA HISTORIAL GIT] git log --all falló: ningún ADR podrá respaldarse con commits.")
+        all_git_commits = []
+    else:
+        all_git_commits = parse_git_log_records(git_all_log.stdout)
 
     if SESSIONS_DIR.exists():
         for session_file in sorted(SESSIONS_DIR.glob("*.json")):
@@ -216,7 +241,7 @@ def main():
 
                     found_hashes = []
                     for gc in all_git_commits:
-                        if trailer_pattern in gc["subject"] or literal_pattern in gc["subject"]:
+                        if trailer_pattern in gc["message"] or literal_pattern in gc["message"]:
                             found_hashes.append(gc["hash"])
 
                     if found_hashes:
@@ -273,7 +298,7 @@ def main():
 
         evidence_hashes = []
         for gc in all_git_commits:
-            if trailer_pattern in gc["subject"] or literal_pattern in gc["subject"]:
+            if trailer_pattern in gc["message"] or literal_pattern in gc["message"]:
                 evidence_hashes.append(gc["hash"])
 
         auto_status = "VERIFICADO" if evidence_hashes else "NO_ENCONTRADO"
