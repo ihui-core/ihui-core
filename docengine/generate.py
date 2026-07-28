@@ -12,8 +12,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SESSIONS_DIR = ROOT / ".sessions"
 SCHEMA_PATH = ROOT / "docengine" / "schema_session_v1.json"
 OUT_DIR = ROOT / "docengine" / "dashboard" / "public" / "data"
-PROJECTBRAIN_DIR = ROOT / "PROJECTBRAIN"
-ADRS_MASTER_PATH = PROJECTBRAIN_DIR / "ADRS.md"
+PROJECTBRAIN_DIR = Path(os.environ.get("DOCENGINE_PROJECTBRAIN", str(ROOT / "PROJECTBRAIN")))
+ADRS_MASTER_PATH = PROJECTBRAIN_DIR / os.environ.get("DOCENGINE_ADRS_FILE", "02_maestrodecisionesarquitectonicas.md")
 
 def get_git_commits_in_range(branch, started_at, ended_at):
     cmd = ["git", "log", branch, "--name-only", "--pretty=format:COMMIT:%H|%an|%ae|%at|%s"]
@@ -99,6 +99,16 @@ def parse_adrs_master():
                 "body": body
             })
     return adrs
+
+if not PROJECTBRAIN_DIR.exists():
+    print(f"[FALTA PROJECTBRAIN] No existe {PROJECTBRAIN_DIR}. Define DOCENGINE_PROJECTBRAIN para apuntar a la carpeta real.")
+
+def safe_rel(path):
+    """Ruta relativa al repo; si el archivo vive fuera, devuelve la ruta absoluta."""
+    try:
+        return str(Path(path).relative_to(ROOT))
+    except ValueError:
+        return str(path)
 
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -286,7 +296,7 @@ def main():
                 content = md_file.read_text(encoding="utf-8")
                 html_content = markdown.markdown(content, extensions=['fenced_code', 'tables'])
                 docs_output.append({
-                    "path": str(md_file.relative_to(ROOT)),
+                    "path": safe_rel(md_file),
                     "title": md_file.stem,
                     "html": html_content
                 })
