@@ -1,10 +1,62 @@
-{
-  "main_commits": [],
-  "prs": [],
-  "active_branches": [
-    {
-      "name": "master",
-      "sha": "44cc175f56bfddeaec128978be37ea996b120dc2"
-    }
-  ]
-}
+[
+  {
+    "hash": "2fdcd68",
+    "author": "ihui-core",
+    "subject": "feat: integrate core-doc-engine",
+    "date": "Tue Jul 28 11:56:09 2026 -0500"
+  },
+  {
+    "hash": "44cc175",
+    "author": "Gil Palmert",
+    "subject": "feat: tareas derivadas padre/hija + permiso derivar (dueno de expediente) + cierre suave con auditoria (Leo)",
+    "date": "Tue Jun 16 15:44:31 2026 -0500"
+  },
+  {
+    "hash": "a845e20",
+    "author": "Gil Palmert",
+    "subject": "feat: confirmacion supervisada - vista previa de tareas con exclusion antes de generar (Leo)",
+    "date": "Tue Jun 16 14:14:00 2026 -0500"
+  },
+  {
+    "hash": "9952d27",
+    "author": "Gil Palmert",
+    "subject": "feat: bandeja sin-asignar + asignar responsable + maxLength en todos los campos + contadores (Leo)",
+    "date": "Tue Jun 16 13:24:34 2026 -0500"
+  },
+  {
+    "hash": "2f520e6",
+    "author": "Gil Palmert",
+    "subject": "fix: dashboard a ancho 1800 + grid de indicadores a 3 columnas iguales (Leo)",
+    "date": "Tue Jun 16 12:25:55 2026 -0500"
+  },
+  {
+    "hash": "9f5b4a0",
+    "author": "Gil Palmert",
+    "subject": "feat: UI generar tareas desde tramite - flujo de escrituracion completo (Leo)",
+    "date": "Mon Jun 15 17:57:32 2026 -0500"
+  },
+  {
+    "hash": "cafc019",
+    "author": "Gil Palmert",
+    "subject": "feat: generar tareas desde plantilla de tramite - motor de clonado automatico supervisado (Leo)",
+    "date": "Mon Jun 15 17:39:40 2026 -0500"
+  },
+  {
+    "hash": "ff6db22",
+    "author": "Gil Palmert",
+    "subject": "feat: plantillas de tareas por tipo de tramite (sin precios, eso es de Notarias) (Leo)",
+    "date": "Mon Jun 15 17:31:27 2026 -0500"
+  },
+  {
+    "hash": "a0a05c2",
+    "author": "Gil Palmert",
+    "subject": "feat: checklist dinamico con subitems, toggle y auditoria + hook evento_disparador para futuro (Leo)",
+    "date": "Mon Jun 15 16:00:54 2026 -0500"
+  },
+  {
+    "hash": "3b539b6",
+    "author": "Gil Palmert",
+    "subject": "feat: selector de estados en UI con permisos (CANCELLED solo supervisor) (Leo)",
+    "date": "Mon Jun 15 15:19:36 2026 -0500"
+  }
+]
