@@ -274,11 +274,22 @@ export default function Dashboard() {
                     <span className="text-sm text-slate-100">{a.titulo || a.title}</span>
                   </div>
                   <div className="text-sm text-slate-400 mt-2">
-                    Dice estar: <span className="text-slate-200">{a.estado_declarado || "—"}</span>
+                    Dice estar:{" "}
+                    <span className="text-slate-200">{a.estado_declarado || "DESCONOCIDO"}</span>
+                    {" · "}
+                    Fecha:{" "}
+                    <span className={a.fecha_declarada ? "text-slate-200" : "text-amber-400"}>
+                      {a.fecha_declarada || "[FALTA FECHA]"}
+                    </span>
                     {" · "}
                     Git sugiere:{" "}
-                    <span className="text-slate-200">{a.estado_detectado || "sin evidencia"}</span>
+                    <span className="text-slate-200">{a.estado_autodetectado || "sin evidencia"}</span>
                   </div>
+                  {a.estado_declarado_raw && (
+                    <div className="text-xs text-slate-600 mt-1">
+                      fuente: <span className="font-mono">{a.estado_declarado_raw}</span>
+                    </div>
+                  )}
                   <div className="text-xs text-slate-500 mt-1">
                     {commits.length > 0
                       ? `Respaldado por ${commits.length} commit(s): ${commits.join(", ")}`

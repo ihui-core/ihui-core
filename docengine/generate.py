@@ -70,14 +70,78 @@ def evaluate_status_priority(statuses):
         return "NO_VERIFICABLE"
     return "VERIFICADO"
 
+# Vocabulario cerrado de estados. Lo que no mapee aqui es DESCONOCIDO: no se inventa.
+ESTADOS_CONOCIDOS = ("ACEPTADA", "PROPUESTA", "SUPERSEDED")
+ESTADO_DESCONOCIDO = "DESCONOCIDO"
+
+# La linea de estado en el maestro es: **Estado:** ACEPTADA · **Fecha:** 17-jun-2026
+# Los `\**` consumen las negritas de la etiqueta para que no se cuelen en el valor.
+ESTADO_LINE_RE = re.compile(r'(?im)^\s*\**\s*estado\s*:\s*\**\s*(.+?)\s*$')
+FECHA_SEG_RE = re.compile(r'(?i)^\**\s*fecha[^:]*:\s*\**\s*(.+)$')
+# Algunas entradas (p.ej. el ANEXO de ADR-037) declaran la fecha en linea propia, sin estado.
+FECHA_LINE_RE = re.compile(r'(?im)^\s*\**\s*fecha[^:\n]*:\s*\**\s*(.+?)\s*$')
+
+def strip_markdown(text):
+    """Quita enfasis (**negrita**, _cursiva_) dejando el texto plano."""
+    return re.sub(r'[*_]+', '', text).strip()
+
+def normalize_estado(segmento):
+    """Mapea el texto declarado al vocabulario cerrado.
+
+    1) Si la primera palabra es un estado conocido, gana (asi 'SUPERSEDED (... ACEPTADA ...)'
+       no se confunde con ACEPTADA).
+    2) Si no, y aparece exactamente UN estado conocido en el segmento, se usa ese
+       ('ABIERTA (PROPUESTA)' -> PROPUESTA).
+    3) Cualquier otra cosa es DESCONOCIDO ('DISEÑO CERRADO', 'Sin resolver...').
+    """
+    limpio = strip_markdown(segmento).upper()
+    if not limpio:
+        return ESTADO_DESCONOCIDO
+
+    primera = re.split(r'[^A-ZÁÉÍÓÚÑ]+', limpio, maxsplit=1)[0]
+    if primera in ESTADOS_CONOCIDOS:
+        return primera
+
+    presentes = {e for e in ESTADOS_CONOCIDOS if re.search(rf'\b{e}\b', limpio)}
+    if len(presentes) == 1:
+        return presentes.pop()
+    return ESTADO_DESCONOCIDO
+
+def parse_estado_line(body):
+    """Separa la linea de estado en (estado normalizado, fecha literal, texto crudo).
+
+    La fecha se deja tal como la escribio la fuente ('~10-jun-2026', 'temprana'):
+    normalizarla a ISO inventaria una precision que el maestro no tiene.
+    Devuelve fecha None si la linea no declara ninguna: el tablero pinta [FALTA FECHA].
+    """
+    match = ESTADO_LINE_RE.search(body)
+    crudo = match.group(1).strip() if match else None
+    segmentos = [s.strip() for s in crudo.split("·") if s.strip()] if crudo else []
+
+    estado = normalize_estado(segmentos[0]) if segmentos else ESTADO_DESCONOCIDO
+
+    fecha = None
+    for seg in segmentos[1:]:
+        fecha_match = FECHA_SEG_RE.match(seg)
+        if fecha_match:
+            fecha = strip_markdown(fecha_match.group(1)) or None
+            break
+
+    if fecha is None:
+        fecha_line = FECHA_LINE_RE.search(body)
+        if fecha_line:
+            fecha = strip_markdown(fecha_line.group(1)) or None
+
+    return estado, fecha, crudo
+
 def parse_adrs_master():
     adrs = []
     if not ADRS_MASTER_PATH.exists():
         return adrs
-    
+
     content = ADRS_MASTER_PATH.read_text(encoding="utf-8")
     sections = re.split(r'(?m)^##\s+', content)
-    
+
     for sec in sections:
         if not sec.strip():
             continue
@@ -88,14 +152,15 @@ def parse_adrs_master():
             adr_id = match.group(1)
             title = match.group(2).strip()
             body = "\n".join(lines[1:])
-            
-            status_match = re.search(r'(?i)estado:\s*([^\n]+)', body)
-            declared_status = status_match.group(1).strip() if status_match else "DESCONOCIDO"
-            
+
+            declared_status, declared_date, declared_raw = parse_estado_line(body)
+
             adrs.append({
                 "id": adr_id,
                 "title": title,
                 "declared_status": declared_status,
+                "declared_date": declared_date,
+                "declared_raw": declared_raw,
                 "body": body
             })
     return adrs
@@ -282,6 +347,8 @@ def main():
             "numero": adr_id,
             "titulo": item["title"],
             "estado_declarado": item["declared_status"],
+            "fecha_declarada": item["declared_date"],
+            "estado_declarado_raw": item["declared_raw"],
             "estado_autodetectado": auto_status,
             "commits_vinculados": evidence_hashes
         })
