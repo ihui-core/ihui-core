@@ -342,6 +342,14 @@ def main():
     with open(OUT_DIR / "git_activity.json", "w", encoding="utf-8") as f:
         json.dump(git_activity, f, indent=2, ensure_ascii=False)
 
+    # Tracker + verificaciones + historial (módulo aparte, configurable por env).
+    # Si falla, se avisa ruidosamente pero NO tumba el resto de las salidas.
+    try:
+        import tracker as tracker_mod
+        tracker_mod.run(ROOT, OUT_DIR)
+    except Exception as err:
+        print(f"[FALLA TRACKER] El módulo tracker no corrió: {err}")
+
     print(f"VERIFICADO: {c_verificado} | NO_ENCONTRADO: {c_no_encontrado} | DISCREPANCIA: {c_discrepancia} | NO_VERIFICABLE: {c_no_verificable} | Invalidos Esquema: {invalid_count}")
 
 if __name__ == "__main__":
