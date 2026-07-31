@@ -157,6 +157,7 @@ def parse_tracker(repo_root, tracker_path, linea_base):
         descripcion = RE_INTAKE.sub("", descripcion)
         descripcion = RE_ORIGEN.sub("", descripcion)
         descripcion = re.sub(r"_\([^)]*\)_\s*$", "", descripcion)
+        descripcion = descripcion.replace("**", "").replace("`", "")
         descripcion = descripcion.strip(" —–-·\t")
 
         renglones.append({
@@ -212,11 +213,13 @@ def leer_verificaciones(verif_dir):
 
 def _resumen(renglones, evidencias):
     """Todos los números del tablero salen de aquí — derivados, jamás tecleados."""
-    universo = [r for r in renglones if r["tipo"] in TIPO_POR_PREFIJO.values()]
     ids_con_evidencia_ok = {e["id"] for e in evidencias if e.get("resultado") == "ok"}
-    cubiertos = [r for r in universo if r["id"] in ids_con_evidencia_ok]
+    for r in renglones:
+        r["cubierto"] = r["id"] in ids_con_evidencia_ok
+    universo = [r for r in renglones if r["tipo"] in TIPO_POR_PREFIJO.values()]
+    cubiertos = [r for r in universo if r["cubierto"]]
     bugs = [r for r in universo if r["tipo"] == "BUG"]
-    bugs_abiertos = [r for r in bugs if r["id"] not in ids_con_evidencia_ok]
+    bugs_abiertos = [r for r in bugs if not r["cubierto"]]
     return {
         "universo": len(universo),
         "base": len([r for r in universo if r["alcance"] == "BASE"]),
@@ -297,6 +300,8 @@ def run(repo_root, out_dir):
     with open(out_dir / "tracker.json", "w", encoding="utf-8") as f:
         json.dump({
             "generado": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
+            "motor": MOTOR_VERSION,
+            "commit_datos": _commit_actual(repo_root),
             "linea_base": linea_base.isoformat() if linea_base else None,
             "commit_inicial_tracker": tracker["commit_inicial"],
             "resumen": resumen,
@@ -322,6 +327,22 @@ def run(repo_root, out_dir):
     }
     with open(historial_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(linea, ensure_ascii=False) + "\n")
+
+    # Copia derivada del historial para la vista Versiones del tablero
+    # (el .jsonl de la raíz sigue siendo el registro canónico).
+    try:
+        lineas = []
+        for n, raw in enumerate(historial_path.read_text(encoding="utf-8").splitlines(), 1):
+            if not raw.strip():
+                continue
+            try:
+                lineas.append(json.loads(raw))
+            except json.JSONDecodeError:
+                print(f"[HISTORIAL ILEGIBLE] línea {n} de {historial_path.name}: se omite.")
+        with open(out_dir / "historial.json", "w", encoding="utf-8") as f:
+            json.dump(lineas, f, indent=2, ensure_ascii=False)
+    except OSError as err:
+        print(f"[HISTORIAL NO PUBLICADO] {err}")
 
     print(f"TRACKER: universo={resumen['universo']} base={resumen['base']} "
           f"expansion={resumen['expansion']} bugs={resumen['bugs_abiertos']} "
